@@ -6,7 +6,7 @@ use std::io::Result;
 use std::io::Write;
 use std::time::Instant;
 
-const SPP: u32 = 200;
+const SPP: u32 = 10;
 
 fn save_image(name: &str, image: Vec<Vec<Vec3>>) -> Result<()> {
     let mut f = File::create(name)?;
@@ -38,7 +38,7 @@ fn main() -> Result<()> {
         90,
     );
 
-    let s = Scene::cornell_box(0.000001, 1000000.);
+    let s = Scene::bvh_test(0.000001, 1000000.);
 
     let mut image = vec![vec![Vec3::new(0., 0., 0.); c.x_pixels()]; c.y_pixels()];
     let now = Instant::now();

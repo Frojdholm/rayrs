@@ -4,8 +4,10 @@ pub mod vecmath;
 
 use vecmath::Vec3;
 
-use geometry::{Axis, Geometry, Hittable, Plane, Sphere};
+use geometry::{Axis, Bvh, Geometry, Hittable, Plane, Sphere};
 use material::{Brdf, DiracBrdf, Emission, Emitting, Material, MixKind, Pdf};
+
+use rand::Rng;
 
 use std::ops::{Add, Mul, Range};
 
@@ -104,16 +106,46 @@ impl Camera {
     }
 }
 
-pub struct Scene {
+struct ListAccelerator {
     objects: Vec<Object>,
+}
+
+impl ListAccelerator {
+    fn new(objects: Vec<Object>) -> Self {
+        ListAccelerator { objects }
+    }
+
+    fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64) -> Option<(f64, Object)> {
+        let mut t = tmax;
+        let mut obj = None;
+        for child in &self.objects {
+            if let Some(t_hit) = child.geom.intersect(ray) {
+                if t_hit > tmin && t_hit < t {
+                    t = t_hit;
+                    obj = Some((*child).clone());
+                }
+            }
+        }
+
+        if obj.is_some() {
+            Some((t, obj.unwrap()))
+        } else {
+            None
+        }
+    }
+}
+
+pub struct Scene {
+    bvh: Bvh,
     lights: Vec<Geometry>,
     t_range: Range<f64>,
 }
 
 impl Scene {
-    pub fn new(objects: Vec<Object>, z_near: f64, z_far: f64) -> Scene {
+    pub fn new(objects: Vec<Object>, z_near: f64, z_far: f64) -> Self {
         assert!(z_near >= 0.);
         assert!(z_far > z_near);
+
         let mut lights = Vec::new();
         for obj in objects.iter() {
             if let Emission::Emissive(_, _) = obj.emission {
@@ -122,7 +154,7 @@ impl Scene {
         }
 
         Scene {
-            objects,
+            bvh: Bvh::build(objects),
             lights,
             t_range: Range {
                 start: z_near,
@@ -131,7 +163,7 @@ impl Scene {
         }
     }
 
-    pub fn fresnel_test(z_near: f64, z_far: f64) -> Scene {
+    pub fn fresnel_test(z_near: f64, z_far: f64) -> Self {
         let white = Material::Diffuse(1., Vec3::new(1., 1., 1.));
         let black = Material::Diffuse(1., Vec3::new(0., 0., 0.));
         let mix = Material::Mix(
@@ -145,7 +177,57 @@ impl Scene {
         Scene::new(vec![sphere], z_near, z_far)
     }
 
-    pub fn cornell_box(z_near: f64, z_far: f64) -> Scene {
+    pub fn bvh_test(z_near: f64, z_far: f64) -> Self {
+        let max_spheres = 500;
+        let mut rng = rand::thread_rng();
+
+        let mut objects = Vec::with_capacity(max_spheres);
+
+        for _ in 0..max_spheres {
+            let sphere = Object::sphere(
+                rng.gen_range(0.5, 1.),
+                Vec3::new(
+                    rng.gen_range(-5., 5.),
+                    rng.gen_range(-1., 10.),
+                    rng.gen_range(-10., 0.),
+                ),
+                Material::Diffuse(
+                    1.,
+                    Vec3::new(
+                        rng.gen_range(0.1, 0.9),
+                        rng.gen_range(0.1, 0.9),
+                        rng.gen_range(0.1, 0.9),
+                    ),
+                ),
+                Emission::Dark,
+            );
+
+            objects.push(sphere);
+        }
+
+        objects.push(Object::sphere(
+            10000.,
+            Vec3::new(0., -10001., 0.),
+            Material::Diffuse(1., Vec3::new(1., 1., 1.)),
+            Emission::Dark,
+        ));
+
+        let light = Object::plane(
+            Axis::YRev,
+            -0.8,
+            0.8,
+            -0.8,
+            0.8,
+            2.4999,
+            Material::NoReflect,
+            Emission::Emissive(5., Vec3::new(1., 1., 1.)),
+        );
+        objects.push(light);
+
+        Scene::new(objects, z_near, z_far)
+    }
+
+    pub fn cornell_box(z_near: f64, z_far: f64) -> Self {
         let green = Material::Diffuse(1., Vec3::new(0., 1., 0.));
         let red = Material::Diffuse(1., Vec3::new(1., 0., 0.));
         let white = Material::Diffuse(1., Vec3::new(1., 1., 1.));
@@ -224,13 +306,14 @@ impl Scene {
         Scene::new(objects, z_near, z_far)
     }
 
-    pub fn background(&self, _dir: &Vec3) -> Vec3 {
-        //let y = (dir.unit().y + 1.) / 2.;
-        //&Vec3::new(0., 0., 1.).mul(y) + &Vec3::new(1., 1., 1.).mul(1. - y)
-        Vec3::new(0., 0., 0.)
+    pub fn background(&self, dir: &Vec3) -> Vec3 {
+        let y = (dir.unit().y + 1.) / 2.;
+        &Vec3::new(0., 0., 1.).mul(y) + &Vec3::new(1., 1., 1.).mul(1. - y)
+        //Vec3::new(0., 0., 0.)
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Object {
     geom: Geometry,
     mat: Material,
@@ -365,65 +448,51 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32, rays: &mut f64) -> Vec3
     let mut throughput = Vec3::new(1., 1., 1.);
 
     for _ in 0..max_bounces {
-        let mut t_max = s.t_range.end;
-        let mut hit_obj: Option<&Object> = None;
-        for obj in &s.objects {
-            if let Some(t) = obj.geom.intersect(&r) {
-                if t > s.t_range.start && t < t_max {
-                    t_max = t;
-                    hit_obj = Some(obj);
-                }
-            }
-        }
-
         *rays += 1.;
-        match hit_obj {
-            Some(obj) => {
-                let position = r.point(t_max);
-                let normal = obj.geom.normal(&position);
-                let incoming = r.direction.unit().mul(-1.);
+        if let Some((t, obj)) = s.bvh.intersect(&r, s.t_range.start, s.t_range.end) {
+            let position = r.point(t);
+            let normal = obj.geom.normal(&position);
+            let incoming = r.direction.unit().mul(-1.);
 
-                let (color, new_ray) = if obj.mat.is_dirac() {
-                    // Materials that contain dirac deltas need to be handled
-                    // explicitly.
-                    let (color, new_ray) = obj.mat.evaluate(&position, &normal, &incoming);
-                    if new_ray.is_none() {
-                        return color;
-                    } else {
-                        (color, new_ray.unwrap())
-                    }
-                } else if let Some(pdf) = obj.mat.pdf() {
-                    // Otherwise if we can sample the material we will do it.
-                    let pdf = Pdf::Mix(
-                        MixKind::Constant(0.5),
-                        Box::new(pdf),
-                        Box::new(Pdf::Hittable(s.lights[0].clone())),
-                    );
-
-                    let outgoing = pdf.generate(&position, &normal, &incoming);
-                    (
-                        obj.mat
-                            .brdf(&position, &normal, &incoming, &outgoing)
-                            .mul(1. / pdf.value(&position, &normal, &incoming, &outgoing)),
-                        Ray::new(position, outgoing),
-                    )
+            let (color, new_ray) = if obj.mat.is_dirac() {
+                // Materials that contain dirac deltas need to be handled
+                // explicitly.
+                let (color, new_ray) = obj.mat.evaluate(&position, &normal, &incoming);
+                if new_ray.is_none() {
+                    return color;
                 } else {
-                    // If we hit a non-reflecting object we can just return.
-                    return &throughput * &obj.emission.emit();
-                };
-                throughput = throughput.mul(&color).add(&obj.emission.emit());
-
-                let p = throughput.x.max(throughput.y).max(throughput.z);
-                if rand::random::<f64>() > p {
-                    return throughput;
+                    (color, new_ray.unwrap())
                 }
+            } else if let Some(pdf) = obj.mat.pdf() {
+                // Otherwise if we can sample the material we will do it.
+                let pdf = Pdf::Mix(
+                    MixKind::Constant(0.5),
+                    Box::new(pdf),
+                    Box::new(Pdf::Hittable(s.lights[0].clone())),
+                );
 
-                throughput = throughput.mul(1. / p);
-                r = new_ray;
+                let outgoing = pdf.generate(&position, &normal, &incoming);
+                (
+                    obj.mat
+                        .brdf(&position, &normal, &incoming, &outgoing)
+                        .mul(1. / pdf.value(&position, &normal, &incoming, &outgoing)),
+                    Ray::new(position, outgoing),
+                )
+            } else {
+                // If we hit a non-reflecting object we can just return.
+                return &throughput * &obj.emission.emit();
+            };
+            throughput = throughput.mul(&color).add(&obj.emission.emit());
+
+            let p = throughput.x.max(throughput.y).max(throughput.z);
+            if rand::random::<f64>() > p {
+                return throughput;
             }
-            None => {
-                return &throughput * &s.background(&r.direction);
-            }
+
+            throughput = throughput.mul(1. / p);
+            r = new_ray;
+        } else {
+            return &throughput * &s.background(&r.direction);
         }
     }
 

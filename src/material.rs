@@ -134,6 +134,7 @@ pub trait DiracBrdf {
 pub enum Material {
     Diffuse(f64, Vec3),
     Mirror(f64, Vec3),
+    //GlossyDiffuse(f64, Vec3, Vec3),
     Mix(MixKind, Box<Material>, Box<Material>),
     NoReflect,
 }
@@ -143,6 +144,23 @@ impl Brdf for Material {
         match self {
             Material::Diffuse(albedo, color) => *albedo / PI * normal.dot(incoming) * color,
             Material::Mirror(_, _) => Vec3::new(0., 0., 0.),
+            // Material::GlossyDiffuse(n, col_spec, col_diff) => {
+            //     // TODO: Finish implementation
+            //     let n_wi = normal.dot(outgoing);
+            //     let n_wo = normal.dot(incoming);
+
+            //     let omega_h = incoming + outgoing;
+
+            //     let r0 = (1. - *n) / (1. + *n);
+            //     let r0 = r0 * r0;
+            //     let fresnel = r0 + (1. - r0) * n_wi.powf(5.);
+            //     let brdf_diff = ((28. / (23. * PI)) * col_diff)
+            //         .mul(&(&Vec3::new(1., 1., 1.) - col_spec))
+            //         .mul(1. - (1. - n_wi / 2.).powf(5.))
+            //         .mul(1. - (1. - n_wo / 2.).powf(5.));
+
+            //     Vec3::new(0., 0., 0.)
+            // }
             Material::Mix(kind, mat1, mat2) => {
                 let factor = kind.value(position, normal, outgoing);
                 &mat1.brdf(position, normal, outgoing, incoming).mul(factor)

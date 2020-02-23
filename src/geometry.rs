@@ -1,4 +1,5 @@
 use super::vecmath::Vec3;
+use super::Object;
 use super::Ray;
 
 use std::f64::consts::PI;
@@ -238,6 +239,323 @@ impl Hittable for Plane {
             Axis::X | Axis::XRev => Vec3::new(self.pos, u, v),
             Axis::Y | Axis::YRev => Vec3::new(u, self.pos, v),
             Axis::Z | Axis::ZRev => Vec3::new(u, v, self.pos),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AxisAlignedBoundingBox {
+    x_range: Range<f64>,
+    y_range: Range<f64>,
+    z_range: Range<f64>,
+    min: Vec3,
+    max: Vec3,
+}
+
+impl AxisAlignedBoundingBox {
+    fn new(xmin: f64, xmax: f64, ymin: f64, ymax: f64, zmin: f64, zmax: f64) -> Self {
+        assert!(xmin <= xmax);
+        assert!(ymin <= ymax);
+        assert!(zmin <= zmax);
+
+        AxisAlignedBoundingBox {
+            x_range: xmin..xmax,
+            y_range: ymin..ymax,
+            z_range: zmin..zmax,
+            min: Vec3::new(xmin, ymin, zmin),
+            max: Vec3::new(xmax, ymax, zmax),
+        }
+    }
+
+    fn intersect(&self, ray: &Ray) -> bool {
+        let min_diff = &self.min - &ray.origin;
+        let max_diff = &self.max - &ray.origin;
+
+        let (tx_min, tx_max) = if ray.direction.x < 0. {
+            (max_diff.x / ray.direction.x, min_diff.x / ray.direction.x)
+        } else {
+            (min_diff.x / ray.direction.x, max_diff.x / ray.direction.x)
+        };
+
+        if tx_max <= tx_min {
+            return false;
+        }
+
+        let (ty_min, ty_max) = if ray.direction.y < 0. {
+            (max_diff.y / ray.direction.y, min_diff.y / ray.direction.y)
+        } else {
+            (min_diff.y / ray.direction.y, max_diff.y / ray.direction.y)
+        };
+
+        if ty_max <= ty_min {
+            return false;
+        }
+
+        let (tz_min, tz_max) = if ray.direction.z < 0. {
+            (max_diff.z / ray.direction.z, min_diff.z / ray.direction.z)
+        } else {
+            (min_diff.z / ray.direction.z, max_diff.z / ray.direction.z)
+        };
+
+        if tz_max <= tz_min {
+            return false;
+        }
+
+        true
+    }
+
+    fn from_object_list(objects: &Vec<Object>) -> Option<Self> {
+        if let Some(bbox) = objects.get(0) {
+            let mut bbox: AxisAlignedBoundingBox = bbox.into();
+            for obj in objects.iter().skip(1) {
+                bbox = bbox.expand(&obj.into());
+            }
+            Some(bbox)
+        } else {
+            None
+        }
+    }
+
+    fn get_center(&self) -> Vec3 {
+        let x = (self.x_range.end - self.x_range.start) / 2. + self.x_range.start;
+        let y = (self.y_range.end - self.y_range.start) / 2. + self.y_range.start;
+        let z = (self.z_range.end - self.z_range.start) / 2. + self.z_range.start;
+        Vec3::new(x, y, z)
+    }
+
+    fn expand(&self, other: &Self) -> Self {
+        let xmin = self.x_range.start.min(other.x_range.start);
+        let xmax = self.x_range.end.max(other.x_range.end);
+        let ymin = self.y_range.start.min(other.y_range.start);
+        let ymax = self.y_range.end.max(other.y_range.end);
+        let zmin = self.z_range.start.min(other.z_range.start);
+        let zmax = self.z_range.end.max(other.z_range.end);
+
+        Self::new(xmin, xmax, ymin, ymax, zmin, zmax)
+    }
+}
+
+impl From<&Sphere> for AxisAlignedBoundingBox {
+    fn from(sphere: &Sphere) -> Self {
+        let radius = sphere.radius2.sqrt();
+        let xmin = sphere.origin.x - radius;
+        let xmax = sphere.origin.x + radius;
+        let ymin = sphere.origin.y - radius;
+        let ymax = sphere.origin.y + radius;
+        let zmin = sphere.origin.z - radius;
+        let zmax = sphere.origin.z + radius;
+        AxisAlignedBoundingBox::new(xmin, xmax, ymin, ymax, zmin, zmax)
+    }
+}
+
+impl From<&Plane> for AxisAlignedBoundingBox {
+    fn from(plane: &Plane) -> Self {
+        match plane.axis {
+            Axis::X | Axis::XRev => {
+                let (ymin, ymax) = (plane.u_range.start, plane.u_range.end);
+                let (zmin, zmax) = (plane.v_range.start, plane.v_range.end);
+                AxisAlignedBoundingBox::new(plane.pos, plane.pos, ymin, ymax, zmin, zmax)
+            }
+            Axis::Y | Axis::YRev => {
+                let (xmin, xmax) = (plane.u_range.start, plane.u_range.end);
+                let (zmin, zmax) = (plane.v_range.start, plane.v_range.end);
+                AxisAlignedBoundingBox::new(xmin, xmax, plane.pos, plane.pos, zmin, zmax)
+            }
+            Axis::Z | Axis::ZRev => {
+                let (xmin, xmax) = (plane.u_range.start, plane.u_range.end);
+                let (ymin, ymax) = (plane.v_range.start, plane.v_range.end);
+                AxisAlignedBoundingBox::new(xmin, xmax, ymin, ymax, plane.pos, plane.pos)
+            }
+        }
+    }
+}
+
+impl From<&Geometry> for AxisAlignedBoundingBox {
+    fn from(geom: &Geometry) -> Self {
+        match geom {
+            Geometry::Sphere(s) => s.into(),
+            Geometry::Plane(p) => p.into(),
+            Geometry::Flipped(f) => (&**f).into(),
+            // TODO: Instanced bounding boxes do not work
+            Geometry::Rotated(_, _) => panic!("Not implemented"),
+            Geometry::Translated(_, _) => panic!("Not implemented"),
+        }
+    }
+}
+
+impl From<&Object> for AxisAlignedBoundingBox {
+    fn from(obj: &Object) -> Self {
+        (&obj.geom).into()
+    }
+}
+
+fn get_split_ind(axis: Axis, split: f64, data: &Vec<(Vec3, Object)>) -> usize {
+    let mut ind = 0;
+    match axis {
+        Axis::X | Axis::XRev => {
+            for (i, (v, _)) in data.iter().enumerate() {
+                if v.x > split {
+                    ind = i;
+                    break;
+                }
+            }
+        }
+        Axis::Y | Axis::YRev => {
+            for (i, (v, _)) in data.iter().enumerate() {
+                if v.y > split {
+                    ind = i;
+                    break;
+                }
+            }
+        }
+        Axis::Z | Axis::ZRev => {
+            for (i, (v, _)) in data.iter().enumerate() {
+                if v.z > split {
+                    ind = i;
+                    break;
+                }
+            }
+        }
+    }
+    ind
+}
+
+pub struct Bvh {
+    bvh: BvhTree,
+}
+
+impl Bvh {
+    pub fn build(objects: Vec<Object>) -> Self {
+        Bvh {
+            bvh: BvhTree::build(objects),
+        }
+    }
+
+    pub fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64) -> Option<(f64, Object)> {
+        self.bvh.intersect(ray, tmin, tmax)
+    }
+}
+
+#[derive(Debug, Clone)]
+enum BvhTree {
+    Node(AxisAlignedBoundingBox, Vec<BvhTree>),
+    LeafNode(Object),
+}
+
+impl BvhTree {
+    fn build(objects: Vec<Object>) -> Self {
+        // Having a BVH for 0 objects does not make sense
+        assert!(objects.len() > 0);
+
+        let bbox = AxisAlignedBoundingBox::from_object_list(&objects).unwrap();
+
+        if objects.len() > 4 {
+            // We only want 4 or less objects in the leaf nodes. So we split
+            // this node along its longest axis and continue.
+
+            // TODO: Make this more understandable..
+            let x = bbox.x_range.end - bbox.x_range.start;
+            let y = bbox.y_range.end - bbox.x_range.start;
+            let z = bbox.z_range.end - bbox.z_range.start;
+
+            let centers: Vec<Vec3> = objects
+                .iter()
+                .map(|geom| AxisAlignedBoundingBox::from(geom).get_center())
+                .collect();
+
+            let mean_center: Vec3 = centers
+                .iter()
+                .fold(Vec3::new(0., 0., 0.), |acc, el| &acc + &el)
+                .mul(1. / centers.len() as f64);
+
+            let mut data: Vec<(Vec3, Object)> = centers.into_iter().zip(objects).collect();
+
+            // Find the index to split the sorted objects. If splitting by the
+            // midpoint of the bounding box would lead to having all elements
+            // in one side we split along object mean position instead.
+            let ind = if x >= y && x >= z {
+                data.sort_by(|a, b| a.0.x.partial_cmp(&b.0.x).unwrap());
+                let ind = get_split_ind(Axis::X, bbox.get_center().x, &data);
+                if ind != 0 {
+                    ind
+                } else {
+                    get_split_ind(Axis::X, mean_center.x, &data)
+                }
+            } else if y >= z {
+                data.sort_by(|a, b| a.0.y.partial_cmp(&b.0.y).unwrap());
+                let ind = get_split_ind(Axis::Y, bbox.get_center().y, &data);
+                if ind != 0 {
+                    ind
+                } else {
+                    get_split_ind(Axis::Y, mean_center.y, &data)
+                }
+            } else {
+                data.sort_by(|a, b| a.0.z.partial_cmp(&b.0.z).unwrap());
+                let ind = get_split_ind(Axis::Z, bbox.get_center().z, &data);
+                if ind != 0 {
+                    ind
+                } else {
+                    get_split_ind(Axis::Z, mean_center.z, &data)
+                }
+            };
+
+            // TODO: There must be a better way to sort geometry and centers together.
+            let sorted_objects: Vec<Object> = data.into_iter().map(|item| item.1).collect();
+            let (split1, split2) = sorted_objects.split_at(ind);
+            BvhTree::Node(
+                bbox,
+                vec![
+                    BvhTree::build(split1.to_vec()),
+                    BvhTree::build(split2.to_vec()),
+                ],
+            )
+        } else {
+            // When we reach a small enough number of objects we can just add
+            // them as leaf nodes.
+            BvhTree::Node(
+                bbox,
+                objects
+                    .into_iter()
+                    .map(|obj| BvhTree::LeafNode(obj))
+                    .collect(),
+            )
+        }
+    }
+
+    fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64) -> Option<(f64, Object)> {
+        match self {
+            BvhTree::Node(bbox, children) => {
+                if bbox.intersect(ray) {
+                    let mut t = tmax;
+                    let mut obj = None;
+                    for child in children {
+                        if let Some((t_hit, obj_hit)) = child.intersect(ray, tmin, tmax) {
+                            if t_hit > tmin && t_hit < t {
+                                t = t_hit;
+                                obj = Some(obj_hit);
+                            }
+                        }
+                    }
+
+                    if obj.is_some() {
+                        Some((t, obj.unwrap()))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            BvhTree::LeafNode(obj) => match obj.geom.intersect(ray) {
+                Some(t) => {
+                    if t > tmin && t < tmax {
+                        Some((t, (*obj).clone()))
+                    } else {
+                        None
+                    }
+                }
+                None => None,
+            },
         }
     }
 }
