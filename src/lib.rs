@@ -106,35 +106,7 @@ impl Camera {
     }
 }
 
-struct ListAccelerator {
-    objects: Vec<Object>,
-}
-
-impl ListAccelerator {
-    fn new(objects: Vec<Object>) -> Self {
-        ListAccelerator { objects }
-    }
-
-    fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64) -> Option<(f64, Object)> {
-        let mut t = tmax;
-        let mut obj = None;
-        for child in &self.objects {
-            if let Some(t_hit) = child.geom.intersect(ray) {
-                if t_hit > tmin && t_hit < t {
-                    t = t_hit;
-                    obj = Some((*child).clone());
-                }
-            }
-        }
-
-        if obj.is_some() {
-            Some((t, obj.unwrap()))
-        } else {
-            None
-        }
-    }
-}
-
+#[derive(Debug)]
 pub struct Scene {
     bvh: Bvh,
     lights: Vec<Geometry>,
@@ -178,7 +150,7 @@ impl Scene {
     }
 
     pub fn bvh_test(z_near: f64, z_far: f64) -> Self {
-        let max_spheres = 500;
+        let max_spheres = 200;
         let mut rng = rand::thread_rng();
 
         let mut objects = Vec::with_capacity(max_spheres);
@@ -187,9 +159,9 @@ impl Scene {
             let sphere = Object::sphere(
                 rng.gen_range(0.5, 1.),
                 Vec3::new(
-                    rng.gen_range(-5., 5.),
-                    rng.gen_range(-1., 10.),
-                    rng.gen_range(-10., 0.),
+                    rng.gen_range(-10., 10.),
+                    rng.gen_range(-1., 20.),
+                    rng.gen_range(-20., 0.),
                 ),
                 Material::Diffuse(
                     1.,
@@ -457,7 +429,12 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32, rays: &mut f64) -> Vec3
             let (color, new_ray) = if obj.mat.is_dirac() {
                 // Materials that contain dirac deltas need to be handled
                 // explicitly.
-                let (color, new_ray) = obj.mat.evaluate(&position, &normal, &incoming);
+                let (color, new_ray) = obj.mat.evaluate(
+                    &position,
+                    &normal,
+                    &incoming,
+                    Some(Pdf::Hittable(s.lights[0].clone())),
+                );
                 if new_ray.is_none() {
                     return color;
                 } else {
@@ -466,7 +443,7 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32, rays: &mut f64) -> Vec3
             } else if let Some(pdf) = obj.mat.pdf() {
                 // Otherwise if we can sample the material we will do it.
                 let pdf = Pdf::Mix(
-                    MixKind::Constant(0.5),
+                    MixKind::Constant(0.8),
                     Box::new(pdf),
                     Box::new(Pdf::Hittable(s.lights[0].clone())),
                 );

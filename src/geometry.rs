@@ -248,8 +248,6 @@ pub struct AxisAlignedBoundingBox {
     x_range: Range<f64>,
     y_range: Range<f64>,
     z_range: Range<f64>,
-    min: Vec3,
-    max: Vec3,
 }
 
 impl AxisAlignedBoundingBox {
@@ -262,42 +260,68 @@ impl AxisAlignedBoundingBox {
             x_range: xmin..xmax,
             y_range: ymin..ymax,
             z_range: zmin..zmax,
-            min: Vec3::new(xmin, ymin, zmin),
-            max: Vec3::new(xmax, ymax, zmax),
         }
     }
 
-    fn intersect(&self, ray: &Ray) -> bool {
-        let min_diff = &self.min - &ray.origin;
-        let max_diff = &self.max - &ray.origin;
-
-        let (tx_min, tx_max) = if ray.direction.x < 0. {
-            (max_diff.x / ray.direction.x, min_diff.x / ray.direction.x)
+    fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64) -> bool {
+        // TODO: Make this faster and take care of NaNs
+        let inv_x = 1. / ray.direction.x;
+        let (txmin, txmax) = if inv_x < 0. {
+            (
+                (self.x_range.end - ray.origin.x) * inv_x,
+                (self.x_range.start - ray.origin.x) * inv_x,
+            )
         } else {
-            (min_diff.x / ray.direction.x, max_diff.x / ray.direction.x)
+            (
+                (self.x_range.start - ray.origin.x) * inv_x,
+                (self.x_range.end - ray.origin.x) * inv_x,
+            )
         };
 
-        if tx_max <= tx_min {
+        let tmin = tmin.max(txmin);
+        let tmax = tmax.min(txmax);
+
+        if tmax <= tmin {
             return false;
         }
 
-        let (ty_min, ty_max) = if ray.direction.y < 0. {
-            (max_diff.y / ray.direction.y, min_diff.y / ray.direction.y)
+        let inv_y = 1. / ray.direction.y;
+        let (tymin, tymax) = if inv_y < 0. {
+            (
+                (self.y_range.end - ray.origin.y) * inv_y,
+                (self.y_range.start - ray.origin.y) * inv_y,
+            )
         } else {
-            (min_diff.y / ray.direction.y, max_diff.y / ray.direction.y)
+            (
+                (self.y_range.start - ray.origin.y) * inv_y,
+                (self.y_range.end - ray.origin.y) * inv_y,
+            )
         };
 
-        if ty_max <= ty_min {
+        let tmin = tmin.max(tymin);
+        let tmax = tmax.min(tymax);
+
+        if tmax <= tmin {
             return false;
         }
 
-        let (tz_min, tz_max) = if ray.direction.z < 0. {
-            (max_diff.z / ray.direction.z, min_diff.z / ray.direction.z)
+        let inv_z = 1. / ray.direction.z;
+        let (tzmin, tzmax) = if inv_z < 0. {
+            (
+                (self.z_range.end - ray.origin.z) * inv_z,
+                (self.z_range.start - ray.origin.z) * inv_z,
+            )
         } else {
-            (min_diff.z / ray.direction.z, max_diff.z / ray.direction.z)
+            (
+                (self.z_range.start - ray.origin.z) * inv_z,
+                (self.z_range.end - ray.origin.z) * inv_z,
+            )
         };
 
-        if tz_max <= tz_min {
+        let tmin = tmin.max(tzmin);
+        let tmax = tmax.min(tzmax);
+
+        if tmax <= tmin {
             return false;
         }
 
@@ -321,6 +345,12 @@ impl AxisAlignedBoundingBox {
         let y = (self.y_range.end - self.y_range.start) / 2. + self.y_range.start;
         let z = (self.z_range.end - self.z_range.start) / 2. + self.z_range.start;
         Vec3::new(x, y, z)
+    }
+
+    fn volume(&self) -> f64 {
+        (self.x_range.end - self.x_range.start)
+            * (self.y_range.end - self.y_range.start)
+            * (self.z_range.end - self.z_range.start)
     }
 
     fn expand(&self, other: &Self) -> Self {
@@ -420,6 +450,7 @@ fn get_split_ind(axis: Axis, split: f64, data: &Vec<(Vec3, Object)>) -> usize {
     ind
 }
 
+#[derive(Debug)]
 pub struct Bvh {
     bvh: BvhTree,
 }
@@ -433,6 +464,10 @@ impl Bvh {
 
     pub fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64) -> Option<(f64, Object)> {
         self.bvh.intersect(ray, tmin, tmax)
+    }
+
+    pub fn volume(&self) -> f64 {
+        self.bvh.volume()
     }
 }
 
@@ -525,7 +560,7 @@ impl BvhTree {
     fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64) -> Option<(f64, Object)> {
         match self {
             BvhTree::Node(bbox, children) => {
-                if bbox.intersect(ray) {
+                if bbox.intersect(ray, tmin, tmax) {
                     let mut t = tmax;
                     let mut obj = None;
                     for child in children {
@@ -558,11 +593,25 @@ impl BvhTree {
             },
         }
     }
+
+    fn volume(&self) -> f64 {
+        match self {
+            BvhTree::Node(bbox, children) => {
+                let volume = children.iter().fold(0., |acc, el| acc + el.volume());
+                volume + bbox.volume()
+            }
+            BvhTree::LeafNode(obj) => {
+                let bbox: AxisAlignedBoundingBox = obj.into();
+                bbox.volume()
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::material::{Emission, Material};
 
     #[test]
     #[should_panic]
@@ -662,5 +711,98 @@ mod tests {
                 && plane.v_range.contains(&sample.y)
                 && sample.z == 0.
         );
+    }
+
+    #[test]
+    fn test_aabb_intersection_outside_x() {
+        let bbox = AxisAlignedBoundingBox::new(-1., 1., -1., 1., -1., 1.);
+        let ray = Ray::new(Vec3::new(-5., 0., 0.), Vec3::new(1., 0., 0.));
+        assert!(bbox.intersect(&ray, 0.001, 1000.));
+    }
+
+    #[test]
+    fn test_aabb_intersection_outside_y() {
+        let bbox = AxisAlignedBoundingBox::new(-1., 1., -1., 1., -1., 1.);
+        let ray = Ray::new(Vec3::new(0., -5., 0.), Vec3::new(0., 1., 0.));
+        assert!(bbox.intersect(&ray, 0.0001, 1000.));
+    }
+
+    #[test]
+    fn test_aabb_intersection_outside_z() {
+        let bbox = AxisAlignedBoundingBox::new(-1., 1., -1., 1., -1., 1.);
+        let ray = Ray::new(Vec3::new(0., 0., -5.), Vec3::new(0., 0., 1.));
+        assert!(bbox.intersect(&ray, 0.001, 1000.));
+    }
+
+    #[test]
+    fn test_aabb_intersection_inside() {
+        let bbox = AxisAlignedBoundingBox::new(-1., 1., -1., 1., -1., 1.);
+        let ray = Ray::new(Vec3::new(0., 0., 0.), Vec3::new(0., 0., 1.));
+        assert!(bbox.intersect(&ray, 0.001, 1000.));
+    }
+
+    #[test]
+    fn test_aabb_intersection_miss() {
+        let bbox = AxisAlignedBoundingBox::new(-1., 1., -1., 1., -1., 1.);
+        let ray = Ray::new(Vec3::new(1.1, 0., 0.), Vec3::new(0., 1., 1.));
+        assert!(!bbox.intersect(&ray, 0.001, 1000.));
+    }
+
+    #[test]
+    fn test_aabb_intersection_miss2() {
+        let bbox = AxisAlignedBoundingBox::new(-1., 1., -1., 1., -1., 1.);
+        let ray = Ray::new(Vec3::new(2., 0., 0.), Vec3::new(-1., -2., 0.));
+        assert!(!bbox.intersect(&ray, 0.001, 1000.));
+    }
+
+    #[test]
+    fn test_bvh_construction_x() {
+        let objects: Vec<Object> = (0..8)
+            .map(|i| {
+                Object::sphere(
+                    1.,
+                    Vec3::new(-10.5 + 3. * (i as f64), 0., 0.),
+                    Material::NoReflect,
+                    Emission::Dark,
+                )
+            })
+            .collect();
+
+        let bvh = Bvh::build(objects);
+        assert_eq!("Bvh { bvh: Node(AxisAlignedBoundingBox { x_range: -11.5..11.5, y_range: -1.0..1.0, z_range: -1.0..1.0 }, [Node(AxisAlignedBoundingBox { x_range: -11.5..-0.5, y_range: -1.0..1.0, z_range: -1.0..1.0 }, [LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: -10.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: -7.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: -4.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: -1.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark })]), Node(AxisAlignedBoundingBox { x_range: 0.5..11.5, y_range: -1.0..1.0, z_range: -1.0..1.0 }, [LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 1.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 4.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 7.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 10.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark })])]) }", format!("{:?}", bvh));
+    }
+
+    #[test]
+    fn test_bvh_construction_y() {
+        let objects: Vec<Object> = (0..8)
+            .map(|i| {
+                Object::sphere(
+                    1.,
+                    Vec3::new(0., -10.5 + 3. * (i as f64), 0.),
+                    Material::NoReflect,
+                    Emission::Dark,
+                )
+            })
+            .collect();
+
+        let bvh = Bvh::build(objects);
+        assert_eq!("Bvh { bvh: Node(AxisAlignedBoundingBox { x_range: -1.0..1.0, y_range: -11.5..11.5, z_range: -1.0..1.0 }, [Node(AxisAlignedBoundingBox { x_range: -1.0..1.0, y_range: -11.5..-0.5, z_range: -1.0..1.0 }, [LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: -10.5, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: -7.5, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: -4.5, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: -1.5, z: 0.0 } }), mat: NoReflect, emission: Dark })]), Node(AxisAlignedBoundingBox { x_range: -1.0..1.0, y_range: 0.5..11.5, z_range: -1.0..1.0 }, [LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 1.5, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 4.5, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 7.5, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 10.5, z: 0.0 } }), mat: NoReflect, emission: Dark })])]) }", format!("{:?}", bvh));
+    }
+
+    #[test]
+    fn test_bvh_construction_z() {
+        let objects: Vec<Object> = (0..8)
+            .map(|i| {
+                Object::sphere(
+                    1.,
+                    Vec3::new(0., 0., -10.5 + 3. * (i as f64)),
+                    Material::NoReflect,
+                    Emission::Dark,
+                )
+            })
+            .collect();
+
+        let bvh = Bvh::build(objects);
+        assert_eq!("Bvh { bvh: Node(AxisAlignedBoundingBox { x_range: -1.0..1.0, y_range: -1.0..1.0, z_range: -11.5..11.5 }, [Node(AxisAlignedBoundingBox { x_range: -1.0..1.0, y_range: -1.0..1.0, z_range: -11.5..-0.5 }, [LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: -10.5 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: -7.5 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: -4.5 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: -1.5 } }), mat: NoReflect, emission: Dark })]), Node(AxisAlignedBoundingBox { x_range: -1.0..1.0, y_range: -1.0..1.0, z_range: 0.5..11.5 }, [LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: 1.5 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: 4.5 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: 7.5 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: 10.5 } }), mat: NoReflect, emission: Dark })])]) }", format!("{:?}", bvh));
     }
 }

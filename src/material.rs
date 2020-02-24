@@ -127,7 +127,13 @@ pub trait Brdf {
 pub trait DiracBrdf {
     // TODO: Allow passing in a pdf and factor to allow for importance sampling
     // when doing non-dirac materials.
-    fn evaluate(&self, position: &Vec3, normal: &Vec3, omega_i: &Vec3) -> (Vec3, Option<Ray>);
+    fn evaluate(
+        &self,
+        position: &Vec3,
+        normal: &Vec3,
+        omega_i: &Vec3,
+        pdf: Option<Pdf>,
+    ) -> (Vec3, Option<Ray>);
 }
 
 #[derive(Debug, Clone)]
@@ -210,12 +216,26 @@ impl Brdf for Material {
 }
 
 impl DiracBrdf for Material {
-    fn evaluate(&self, position: &Vec3, normal: &Vec3, outgoing: &Vec3) -> (Vec3, Option<Ray>) {
+    fn evaluate(
+        &self,
+        position: &Vec3,
+        normal: &Vec3,
+        outgoing: &Vec3,
+        pdf: Option<Pdf>,
+    ) -> (Vec3, Option<Ray>) {
         match self {
             Material::Diffuse(_, _) => {
                 // If we try to evaluate the Diffuse material as a Dirac material
                 // we basically just do the normal scatter.
-                let pdf = self.pdf().unwrap();
+                let pdf = match pdf {
+                    Some(pdf) => Pdf::Mix(
+                        MixKind::Constant(0.8),
+                        Box::new(self.pdf().unwrap()),
+                        Box::new(pdf),
+                    ),
+                    None => self.pdf().unwrap(),
+                };
+
                 let incoming = pdf.generate(position, normal, outgoing);
                 (
                     self.brdf(position, normal, outgoing, &incoming),
@@ -235,9 +255,9 @@ impl DiracBrdf for Material {
             }
             Material::Mix(kind, mat1, mat2) => {
                 if rand::random::<f64>() < kind.value(position, normal, outgoing) {
-                    mat1.evaluate(position, normal, outgoing)
+                    mat1.evaluate(position, normal, outgoing, pdf)
                 } else {
-                    mat2.evaluate(position, normal, outgoing)
+                    mat2.evaluate(position, normal, outgoing, pdf)
                 }
             }
             Material::NoReflect => (Vec3::new(0., 0., 0.), None),
