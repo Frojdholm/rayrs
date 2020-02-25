@@ -248,8 +248,6 @@ pub struct AxisAlignedBoundingBox {
     x_range: Range<f64>,
     y_range: Range<f64>,
     z_range: Range<f64>,
-    min: Vec3,
-    max: Vec3,
 }
 
 impl AxisAlignedBoundingBox {
@@ -262,88 +260,61 @@ impl AxisAlignedBoundingBox {
             x_range: xmin..xmax,
             y_range: ymin..ymax,
             z_range: zmin..zmax,
-            min: Vec3::new(xmin, ymin, zmin),
-            max: Vec3::new(xmax, ymax, zmax),
         }
     }
 
     fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64) -> bool {
         // TODO: Make this faster and take care of NaNs
-        // explicitly unrolled version might be faster..
 
-        // let xmax = self.x_range.end - ray.origin.x;
-        // let xmin = self.x_range.start - ray.origin.x;
-        // let inv_x = 1. / ray.direction.x;
+        let xmax = self.x_range.end - ray.origin.x;
+        let xmin = self.x_range.start - ray.origin.x;
+        let inv_x = 1. / ray.direction.x;
 
-        // let (txmin, txmax) = if inv_x < 0. {
-        //     (xmax * inv_x, xmin * inv_x)
-        // } else {
-        //     (xmin * inv_x, xmax * inv_x)
-        // };
-
-        // let tmin = tmin.max(txmin);
-        // let tmax = tmax.min(txmax);
-
-        // if tmax <= tmin {
-        //     return false;
-        // }
-
-        // let ymax = self.y_range.end - ray.origin.y;
-        // let ymin = self.y_range.start - ray.origin.y;
-        // let inv_y = 1. / ray.direction.y;
-
-        // let (tymin, tymax) = if inv_y < 0. {
-        //     (ymax * inv_y, ymin * inv_y)
-        // } else {
-        //     (ymin * inv_y, ymax * inv_y)
-        // };
-
-        // let tmin = tmin.max(tymin);
-        // let tmax = tmax.min(tymax);
-
-        // if tmax <= tmin {
-        //     return false;
-        // }
-
-        // let zmax = self.z_range.end - ray.origin.z;
-        // let zmin = self.z_range.start - ray.origin.z;
-        // let inv_z = 1. / ray.direction.z;
-
-        // let (tzmin, tzmax) = if inv_z < 0. {
-        //     (zmax * inv_z, zmin * inv_z)
-        // } else {
-        //     (zmin * inv_z, zmax * inv_z)
-        // };
-
-        // let tmin = tmin.max(tzmin);
-        // let tmax = tmax.min(tzmax);
-
-        // if tmax <= tmin {
-        //     return false;
-        // }
-
-        let min = self.min.get_array();
-        let max = self.max.get_array();
-        let ray_origin = ray.origin.get_array();
-        let ray_dir = ray.direction.get_array();
-
-        // Iterator version might be faster
-        for i in 0_usize..3_usize {
-            let maxdiff = max[i] - ray_origin[i];
-            let mindiff = min[i] - ray_origin[i];
-
-            let inv = 1. / ray_dir[i];
-            let (t_el_min, t_el_max) = if inv < 0. {
-                (maxdiff * inv, mindiff * inv)
+        let (txmin, txmax) = if inv_x < 0. {
+            (xmax * inv_x, xmin * inv_x)
         } else {
-                (mindiff * inv, maxdiff * inv)
+            (xmin * inv_x, xmax * inv_x)
         };
-            let tmin = tmin.max(t_el_min);
-            let tmax = tmax.min(t_el_max);
+
+        let tmin = tmin.max(txmin);
+        let tmax = tmax.min(txmax);
 
         if tmax <= tmin {
             return false;
         }
+
+        let ymax = self.y_range.end - ray.origin.y;
+        let ymin = self.y_range.start - ray.origin.y;
+        let inv_y = 1. / ray.direction.y;
+
+        let (tymin, tymax) = if inv_y < 0. {
+            (ymax * inv_y, ymin * inv_y)
+        } else {
+            (ymin * inv_y, ymax * inv_y)
+        };
+
+        let tmin = tmin.max(tymin);
+        let tmax = tmax.min(tymax);
+
+        if tmax <= tmin {
+            return false;
+        }
+
+        let zmax = self.z_range.end - ray.origin.z;
+        let zmin = self.z_range.start - ray.origin.z;
+        let inv_z = 1. / ray.direction.z;
+
+        let (tzmin, tzmax) = if inv_z < 0. {
+            (zmax * inv_z, zmin * inv_z)
+        } else {
+            (zmin * inv_z, zmax * inv_z)
+        };
+
+        let tmin = tmin.max(tzmin);
+        let tmax = tmax.min(tzmax);
+
+        if tmax <= tmin {
+            return false;
         }
 
         true
