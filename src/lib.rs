@@ -4,7 +4,7 @@ pub mod vecmath;
 
 use vecmath::Vec3;
 
-use geometry::{Axis, Bvh, Geometry, Hittable, Plane, Sphere};
+use geometry::{Axis, Bvh, BvhHeuristic, Geometry, Hittable, Plane, Sphere};
 use material::{Brdf, DiracBrdf, Emission, Emitting, Material, MixKind, Pdf};
 
 use rand::Rng;
@@ -126,7 +126,7 @@ impl Scene {
         }
 
         Scene {
-            bvh: Bvh::build(objects),
+            bvh: Bvh::build(BvhHeuristic::Sah, objects),
             lights,
             t_range: Range {
                 start: z_near,
@@ -150,7 +150,7 @@ impl Scene {
     }
 
     pub fn bvh_test(z_near: f64, z_far: f64) -> Self {
-        let max_spheres = 200;
+        let max_spheres = 500;
         let mut rng = rand::thread_rng();
 
         let mut objects = Vec::with_capacity(max_spheres);
@@ -278,10 +278,10 @@ impl Scene {
         Scene::new(objects, z_near, z_far)
     }
 
-    pub fn background(&self, dir: &Vec3) -> Vec3 {
-        let y = (dir.unit().y + 1.) / 2.;
-        &Vec3::new(0., 0., 1.).mul(y) + &Vec3::new(1., 1., 1.).mul(1. - y)
-        //Vec3::new(0., 0., 0.)
+    pub fn background(&self, _dir: &Vec3) -> Vec3 {
+        // let y = (dir.unit().y + 1.) / 2.;
+        // &Vec3::new(0., 0., 1.).mul(y) + &Vec3::new(1., 1., 1.).mul(1. - y)
+        Vec3::new(0., 0., 0.)
     }
 }
 

@@ -320,15 +320,15 @@ impl AxisAlignedBoundingBox {
         true
     }
 
-    fn from_object_list(objects: &Vec<Object>) -> Option<Self> {
-        if let Some(bbox) = objects.get(0) {
-            let mut bbox: AxisAlignedBoundingBox = bbox.into();
+    fn from_object_list(objects: &[Object]) -> Option<Self> {
+        if objects.len() == 0 {
+            None
+        } else {
+            let mut bbox: AxisAlignedBoundingBox = (&objects[0]).into();
             for obj in objects.iter().skip(1) {
                 bbox = bbox.expand(&obj.into());
             }
             Some(bbox)
-        } else {
-            None
         }
     }
 
@@ -343,6 +343,13 @@ impl AxisAlignedBoundingBox {
         (self.x_range.end - self.x_range.start)
             * (self.y_range.end - self.y_range.start)
             * (self.z_range.end - self.z_range.start)
+    }
+
+    fn surface_area(&self) -> f64 {
+        let x = self.x_range.end - self.x_range.start;
+        let y = self.y_range.end - self.y_range.start;
+        let z = self.z_range.end - self.z_range.start;
+        2. * x * y + 2. * y * z + 2. * x * z
     }
 
     fn expand(&self, other: &Self) -> Self {
@@ -411,7 +418,7 @@ impl From<&Object> for AxisAlignedBoundingBox {
     }
 }
 
-fn get_split_ind(axis: Axis, split: f64, data: &Vec<(Vec3, Object)>) -> usize {
+fn get_split_ind(axis: Axis, split: f64, data: &[(Vec3, Object)]) -> usize {
     let mut ind = 0;
     match axis {
         Axis::X | Axis::XRev => {
@@ -442,15 +449,55 @@ fn get_split_ind(axis: Axis, split: f64, data: &Vec<(Vec3, Object)>) -> usize {
     ind
 }
 
+fn calculate_sah(
+    cost_traversal: f64,
+    cost_intersect: f64,
+    surface_area: f64,
+    left: &[(Vec3, Object)],
+    right: &[(Vec3, Object)],
+) -> f64 {
+    let left_objects: Vec<_> = left.iter().map(|item| item.1.clone()).collect();
+    let right_objects: Vec<_> = right.iter().map(|item| item.1.clone()).collect();
+    let bbox_left = AxisAlignedBoundingBox::from_object_list(&left_objects);
+    let bbox_right = AxisAlignedBoundingBox::from_object_list(&right_objects);
+
+    let p_left = match bbox_left {
+        Some(bbox) => bbox.surface_area() / surface_area,
+        None => 0.,
+    };
+
+    let p_right = match bbox_right {
+        Some(bbox) => bbox.surface_area() / surface_area,
+        None => 0.,
+    };
+
+    cost_traversal
+        + cost_intersect * (p_left * (left.len() as f64) + p_right * (right.len() as f64))
+}
+
+#[derive(Debug)]
+pub enum BvhHeuristic {
+    Midpoint,
+    Sah,
+}
+
 #[derive(Debug)]
 pub struct Bvh {
     bvh: BvhTree,
+    heuristic: BvhHeuristic,
 }
 
 impl Bvh {
-    pub fn build(objects: Vec<Object>) -> Self {
-        Bvh {
-            bvh: BvhTree::build(objects),
+    pub fn build(heuristic: BvhHeuristic, objects: Vec<Object>) -> Self {
+        match heuristic {
+            BvhHeuristic::Midpoint => Bvh {
+                bvh: BvhTree::build_midpoint(objects),
+                heuristic,
+            },
+            BvhHeuristic::Sah => Bvh {
+                bvh: BvhTree::build_sah(objects),
+                heuristic,
+            },
         }
     }
 
@@ -470,7 +517,131 @@ enum BvhTree {
 }
 
 impl BvhTree {
-    fn build(objects: Vec<Object>) -> Self {
+    fn build_sah(objects: Vec<Object>) -> Self {
+        // Having a BVH for 0 objects does not make sense
+        assert!(objects.len() > 0);
+
+        let bbox = AxisAlignedBoundingBox::from_object_list(&objects).unwrap();
+
+        if objects.len() > 4 {
+            // We only want 4 or less objects in the leaf nodes. So we split
+            // this node along its longest axis and continue.
+
+            // TODO: Make this more understandable..
+            let x = bbox.x_range.end - bbox.x_range.start;
+            let y = bbox.y_range.end - bbox.x_range.start;
+            let z = bbox.z_range.end - bbox.z_range.start;
+            let surface_area = bbox.surface_area();
+
+            let centers: Vec<Vec3> = objects
+                .iter()
+                .map(|geom| AxisAlignedBoundingBox::from(geom).get_center())
+                .collect();
+
+            let mean_center: Vec3 = centers
+                .iter()
+                .fold(Vec3::new(0., 0., 0.), |acc, el| &acc + &el)
+                .mul(1. / centers.len() as f64);
+
+            let mut data: Vec<(Vec3, Object)> = centers.into_iter().zip(objects).collect();
+
+            // Find the index to split the sorted objects. If splitting by the
+            // SAH of the bounding box would lead to having all elements
+            // in one side we split along object mean position instead.
+            let ind = if x >= y && x >= z {
+                data.sort_by(|a, b| a.0.x.partial_cmp(&b.0.x).unwrap());
+                let split_dist = x * 0.001; // Do 999 splits;
+                let mut min_ind = get_split_ind(Axis::X, bbox.x_range.start + split_dist, &data);
+                let mut min_sah =
+                    calculate_sah(0.3, 1., surface_area, &data[..min_ind], &data[min_ind..]);
+                for i in 2..1000 {
+                    let ind =
+                        get_split_ind(Axis::X, bbox.x_range.start + (i as f64) * split_dist, &data);
+                    let sah = calculate_sah(0.3, 1., surface_area, &data[..ind], &data[ind..]);
+                    if sah < min_sah {
+                        min_sah = sah;
+                        min_ind = ind;
+                    }
+                }
+                if min_ind != 0 {
+                    min_ind
+                } else {
+                    get_split_ind(Axis::X, mean_center.x, &data)
+                }
+            } else if y >= z {
+                data.sort_by(|a, b| a.0.y.partial_cmp(&b.0.y).unwrap());
+                let split_dist = y * 0.001; // Do 999 splits;
+                let mut min_ind = get_split_ind(Axis::Y, bbox.y_range.start + split_dist, &data);
+                let mut min_sah =
+                    calculate_sah(0.3, 1., surface_area, &data[..min_ind], &data[min_ind..]);
+                for i in 2..1000 {
+                    let ind =
+                        get_split_ind(Axis::Y, bbox.y_range.start + (i as f64) * split_dist, &data);
+                    let sah = calculate_sah(0.3, 1., surface_area, &data[..ind], &data[ind..]);
+                    if sah < min_sah {
+                        min_sah = sah;
+                        min_ind = ind;
+                    }
+                }
+                if min_ind != 0 {
+                    min_ind
+                } else {
+                    get_split_ind(Axis::Y, mean_center.y, &data)
+                }
+            } else {
+                data.sort_by(|a, b| a.0.z.partial_cmp(&b.0.z).unwrap());
+                let split_dist = z * 0.001; // Do 999 splits;
+                let mut min_ind = get_split_ind(Axis::Z, bbox.z_range.start + split_dist, &data);
+                let mut min_sah =
+                    calculate_sah(0.3, 1., surface_area, &data[..min_ind], &data[min_ind..]);
+                for i in 2..1000 {
+                    let ind =
+                        get_split_ind(Axis::Z, bbox.z_range.start + (i as f64) * split_dist, &data);
+                    let sah = calculate_sah(0.3, 1., surface_area, &data[..ind], &data[ind..]);
+                    if sah < min_sah {
+                        min_sah = sah;
+                        min_ind = ind;
+                    }
+                }
+                if min_ind != 0 {
+                    min_ind
+                } else {
+                    get_split_ind(Axis::Z, mean_center.z, &data)
+                }
+            };
+
+            // TODO: There must be a better way to sort geometry and centers together.
+            let sorted_objects: Vec<Object> = data.into_iter().map(|item| item.1).collect();
+            let (split1, split2) = sorted_objects.split_at(ind);
+            BvhTree::Node(
+                bbox,
+                vec![
+                    if split1.len() > 1 {
+                        BvhTree::build_sah(split1.to_vec())
+                    } else {
+                        BvhTree::LeafNode(split1.to_vec().remove(0))
+                    },
+                    if split2.len() > 1 {
+                        BvhTree::build_sah(split2.to_vec())
+                    } else {
+                        BvhTree::LeafNode(split2.to_vec().remove(0))
+                    },
+                ],
+            )
+        } else {
+            // When we reach a small enough number of objects we can just add
+            // them as leaf nodes.
+            BvhTree::Node(
+                bbox,
+                objects
+                    .into_iter()
+                    .map(|obj| BvhTree::LeafNode(obj))
+                    .collect(),
+            )
+        }
+    }
+
+    fn build_midpoint(objects: Vec<Object>) -> Self {
         // Having a BVH for 0 objects does not make sense
         assert!(objects.len() > 0);
 
@@ -532,8 +703,16 @@ impl BvhTree {
             BvhTree::Node(
                 bbox,
                 vec![
-                    BvhTree::build(split1.to_vec()),
-                    BvhTree::build(split2.to_vec()),
+                    if split1.len() > 1 {
+                        BvhTree::build_midpoint(split1.to_vec())
+                    } else {
+                        BvhTree::LeafNode(split1.to_vec().remove(0))
+                    },
+                    if split2.len() > 1 {
+                        BvhTree::build_midpoint(split2.to_vec())
+                    } else {
+                        BvhTree::LeafNode(split2.to_vec().remove(0))
+                    },
                 ],
             )
         } else {
@@ -748,7 +927,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bvh_construction_x() {
+    fn test_bvh_midpoint_construction_x() {
         let objects: Vec<Object> = (0..8)
             .map(|i| {
                 Object::sphere(
@@ -760,12 +939,12 @@ mod tests {
             })
             .collect();
 
-        let bvh = Bvh::build(objects);
-        assert_eq!("Bvh { bvh: Node(AxisAlignedBoundingBox { x_range: -11.5..11.5, y_range: -1.0..1.0, z_range: -1.0..1.0 }, [Node(AxisAlignedBoundingBox { x_range: -11.5..-0.5, y_range: -1.0..1.0, z_range: -1.0..1.0 }, [LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: -10.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: -7.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: -4.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: -1.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark })]), Node(AxisAlignedBoundingBox { x_range: 0.5..11.5, y_range: -1.0..1.0, z_range: -1.0..1.0 }, [LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 1.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 4.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 7.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 10.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark })])]) }", format!("{:?}", bvh));
+        let bvh = Bvh::build(BvhHeuristic::Midpoint, objects);
+        assert_eq!("Bvh { bvh: Node(AxisAlignedBoundingBox { x_range: -11.5..11.5, y_range: -1.0..1.0, z_range: -1.0..1.0 }, [Node(AxisAlignedBoundingBox { x_range: -11.5..-0.5, y_range: -1.0..1.0, z_range: -1.0..1.0 }, [LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: -10.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: -7.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: -4.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: -1.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark })]), Node(AxisAlignedBoundingBox { x_range: 0.5..11.5, y_range: -1.0..1.0, z_range: -1.0..1.0 }, [LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 1.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 4.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 7.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 10.5, y: 0.0, z: 0.0 } }), mat: NoReflect, emission: Dark })])]), heuristic: Midpoint }", format!("{:?}", bvh));
     }
 
     #[test]
-    fn test_bvh_construction_y() {
+    fn test_bvh_midpoint_construction_y() {
         let objects: Vec<Object> = (0..8)
             .map(|i| {
                 Object::sphere(
@@ -777,12 +956,12 @@ mod tests {
             })
             .collect();
 
-        let bvh = Bvh::build(objects);
-        assert_eq!("Bvh { bvh: Node(AxisAlignedBoundingBox { x_range: -1.0..1.0, y_range: -11.5..11.5, z_range: -1.0..1.0 }, [Node(AxisAlignedBoundingBox { x_range: -1.0..1.0, y_range: -11.5..-0.5, z_range: -1.0..1.0 }, [LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: -10.5, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: -7.5, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: -4.5, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: -1.5, z: 0.0 } }), mat: NoReflect, emission: Dark })]), Node(AxisAlignedBoundingBox { x_range: -1.0..1.0, y_range: 0.5..11.5, z_range: -1.0..1.0 }, [LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 1.5, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 4.5, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 7.5, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 10.5, z: 0.0 } }), mat: NoReflect, emission: Dark })])]) }", format!("{:?}", bvh));
+        let bvh = Bvh::build(BvhHeuristic::Midpoint, objects);
+        assert_eq!("Bvh { bvh: Node(AxisAlignedBoundingBox { x_range: -1.0..1.0, y_range: -11.5..11.5, z_range: -1.0..1.0 }, [Node(AxisAlignedBoundingBox { x_range: -1.0..1.0, y_range: -11.5..-0.5, z_range: -1.0..1.0 }, [LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: -10.5, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: -7.5, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: -4.5, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: -1.5, z: 0.0 } }), mat: NoReflect, emission: Dark })]), Node(AxisAlignedBoundingBox { x_range: -1.0..1.0, y_range: 0.5..11.5, z_range: -1.0..1.0 }, [LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 1.5, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 4.5, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 7.5, z: 0.0 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 10.5, z: 0.0 } }), mat: NoReflect, emission: Dark })])]), heuristic: Midpoint }", format!("{:?}", bvh));
     }
 
     #[test]
-    fn test_bvh_construction_z() {
+    fn test_bvh_midpoint_construction_z() {
         let objects: Vec<Object> = (0..8)
             .map(|i| {
                 Object::sphere(
@@ -794,7 +973,22 @@ mod tests {
             })
             .collect();
 
-        let bvh = Bvh::build(objects);
-        assert_eq!("Bvh { bvh: Node(AxisAlignedBoundingBox { x_range: -1.0..1.0, y_range: -1.0..1.0, z_range: -11.5..11.5 }, [Node(AxisAlignedBoundingBox { x_range: -1.0..1.0, y_range: -1.0..1.0, z_range: -11.5..-0.5 }, [LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: -10.5 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: -7.5 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: -4.5 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: -1.5 } }), mat: NoReflect, emission: Dark })]), Node(AxisAlignedBoundingBox { x_range: -1.0..1.0, y_range: -1.0..1.0, z_range: 0.5..11.5 }, [LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: 1.5 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: 4.5 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: 7.5 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: 10.5 } }), mat: NoReflect, emission: Dark })])]) }", format!("{:?}", bvh));
+        let bvh = Bvh::build(BvhHeuristic::Midpoint, objects);
+        assert_eq!("Bvh { bvh: Node(AxisAlignedBoundingBox { x_range: -1.0..1.0, y_range: -1.0..1.0, z_range: -11.5..11.5 }, [Node(AxisAlignedBoundingBox { x_range: -1.0..1.0, y_range: -1.0..1.0, z_range: -11.5..-0.5 }, [LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: -10.5 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: -7.5 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: -4.5 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: -1.5 } }), mat: NoReflect, emission: Dark })]), Node(AxisAlignedBoundingBox { x_range: -1.0..1.0, y_range: -1.0..1.0, z_range: 0.5..11.5 }, [LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: 1.5 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: 4.5 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: 7.5 } }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Sphere(Sphere { radius2: 1.0, origin: Vec3 { x: 0.0, y: 0.0, z: 10.5 } }), mat: NoReflect, emission: Dark })])]), heuristic: Midpoint }", format!("{:?}", bvh));
+    }
+
+    #[test]
+    fn test_bvh_intersect_node_leafnode() {
+        let sphere = Object::sphere(
+            1.,
+            Vec3::new(0., 0., 0.),
+            Material::NoReflect,
+            Emission::Dark,
+        );
+        let bvh = BvhTree::Node((&sphere).into(), vec![BvhTree::LeafNode(sphere)]);
+        let ray = Ray::new(Vec3::new(-5., 0., 0.), Vec3::new(1., 0., 0.));
+        let (t, _) = bvh.intersect(&ray, 0.001, 1000.).unwrap();
+
+        assert_eq!(4., t);
     }
 }
