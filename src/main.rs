@@ -1,31 +1,12 @@
 use rayrs::vecmath::Vec3;
 use rayrs::{Camera, Scene};
+use rayrs::image::{Image, ImageFormat};
 
-use std::fs::File;
 use std::io::Result;
-use std::io::Write;
+
 use std::time::Instant;
 
-const SPP: u32 = 2000;
-
-fn save_image(name: &str, image: Vec<Vec<Vec3>>) -> Result<()> {
-    let mut f = File::create(name)?;
-    write!(f, "P3\n{} {}\n255\n", image[0].len(), image.len())?;
-    for v in image.iter().rev() {
-        for e in v.iter().rev() {
-            let pixel = e.clip(0., 1.).pow(1. / 2.2);
-            write!(
-                f,
-                "{} {} {} ",
-                (255.99 * pixel.x) as u8,
-                (255.99 * pixel.y) as u8,
-                (255.99 * pixel.z) as u8
-            )?;
-        }
-        writeln!(f, "")?;
-    }
-    Ok(())
-}
+const SPP: u32 = 200;
 
 fn main() -> Result<()> {
     let c = Camera::new(
@@ -35,22 +16,22 @@ fn main() -> Result<()> {
         90.,
         2.,
         2.,
-        90,
+        50,
     );
 
     let s = Scene::cornell_box(0.000001, 1000000.);
 
-    let mut image = vec![vec![Vec3::new(0., 0., 0.); c.x_pixels()]; c.y_pixels()];
+    let mut image = Image::new(c.x_pixels(), c.y_pixels());
     let now = Instant::now();
-    for (j, row) in image.iter_mut().enumerate() {
+    for j in 0..image.get_width() {
         let start = Instant::now();
         let mut rays = 0.;
-        for (i, e) in row.iter_mut().enumerate() {
+        for i in 0..image.get_height() {
             let mut pixel = Vec3::new(0., 0., 0.);
             for _ in 0..SPP {
-                pixel = &pixel + &rayrs::radiance(&s, c.generate_primary_ray(i, j), 50, &mut rays);
+                pixel = &pixel + &rayrs::radiance(&s, c.generate_primary_ray(image.get_height() - i, j), 50, &mut rays);
             }
-            *e = (1. / SPP as f64) * &pixel;
+            image.set_pixel(i, j, (1. / SPP as f64) * &pixel);
         }
         print!(
             "\r{:.3} Mrays/s         ",
@@ -60,5 +41,5 @@ fn main() -> Result<()> {
     println!();
     println!("Time take: {:.3} s", now.elapsed().as_secs_f64());
 
-    save_image("test.ppm", image)
+    image.save("test.ppm", ImageFormat::PpmBinary)
 }

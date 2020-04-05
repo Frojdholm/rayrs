@@ -1,6 +1,7 @@
 pub mod geometry;
 pub mod material;
 pub mod vecmath;
+pub mod image;
 
 use vecmath::Vec3;
 
@@ -96,8 +97,8 @@ impl Camera {
         let i: f64 = i as f64;
         let j: f64 = j as f64;
 
-        let x: f64 = (i + rand::random::<f64>()) / (self.ppc as f64) - self.width / 2.;
-        let y: f64 = (j + rand::random::<f64>()) / (self.ppc as f64) - self.height / 2.;
+        let x: f64 = (j + rand::random::<f64>()) / (self.ppc as f64) - self.width / 2.;
+        let y: f64 = (i + rand::random::<f64>()) / (self.ppc as f64) - self.height / 2.;
 
         Ray::new(
             self.origin.clone(),
