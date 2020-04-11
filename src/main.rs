@@ -1,6 +1,6 @@
+use rayrs::image::{Image, ImageFormat};
 use rayrs::vecmath::Vec3;
 use rayrs::{Camera, Scene};
-use rayrs::image::{Image, ImageFormat};
 
 use std::io::Result;
 
@@ -19,7 +19,7 @@ fn main() -> Result<()> {
         50,
     );
 
-    let s = Scene::cornell_box(0.000001, 1000000.);
+    let s = Scene::dragon(0.000001, 1000000.);
 
     let mut image = Image::new(c.x_pixels(), c.y_pixels());
     let now = Instant::now();
@@ -29,9 +29,14 @@ fn main() -> Result<()> {
         for i in 0..image.get_height() {
             let mut pixel = Vec3::new(0., 0., 0.);
             for _ in 0..SPP {
-                pixel = &pixel + &rayrs::radiance(&s, c.generate_primary_ray(image.get_height() - i, j), 50, &mut rays);
+                pixel += rayrs::radiance(
+                    &s,
+                    c.generate_primary_ray(image.get_height() - i, image.get_width() - j),
+                    50,
+                    &mut rays,
+                );
             }
-            image.set_pixel(i, j, (1. / SPP as f64) * &pixel);
+            image.set_pixel(i, j, (1. / SPP as f64) * pixel);
         }
         print!(
             "\r{:.3} Mrays/s         ",

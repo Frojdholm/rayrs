@@ -6,8 +6,8 @@ use std::f64::consts::PI;
 use std::ops::{Mul, Range};
 
 pub trait Hittable {
-    fn intersect(&self, r: &Ray) -> Option<f64>;
-    fn normal(&self, p: &Vec3) -> Vec3;
+    fn intersect(&self, r: Ray) -> Option<f64>;
+    fn normal(&self, p: Vec3) -> Vec3;
     fn area(&self) -> f64;
     fn sample(&self) -> Vec3;
 }
@@ -16,29 +16,32 @@ pub trait Hittable {
 pub enum Geometry {
     Sphere(Sphere),
     Plane(Plane),
+    Triangle(Triangle),
     Flipped(Box<Geometry>),
     Rotated(Vec3, Box<Geometry>),
     Translated(Vec3, Box<Geometry>),
 }
 
 impl Hittable for Geometry {
-    fn intersect(&self, r: &Ray) -> Option<f64> {
+    fn intersect(&self, r: Ray) -> Option<f64> {
         match self {
             Geometry::Sphere(s) => s.intersect(r),
             Geometry::Plane(p) => p.intersect(r),
+            Geometry::Triangle(t) => t.intersect(r),
             Geometry::Flipped(f) => f.intersect(r),
-            Geometry::Rotated(rot, geom) => geom.intersect(&r.rotate(&rot)),
-            Geometry::Translated(v, geom) => geom.intersect(&r.translate(&v.mul(-1.))),
+            Geometry::Rotated(rot, geom) => geom.intersect(r.rotate(*rot)),
+            Geometry::Translated(v, geom) => geom.intersect(r.translate(-1. * *v)),
         }
     }
 
-    fn normal(&self, p: &Vec3) -> Vec3 {
+    fn normal(&self, p: Vec3) -> Vec3 {
         match self {
             Geometry::Sphere(s) => s.normal(p),
             Geometry::Plane(plane) => plane.normal(p),
-            Geometry::Flipped(f) => -1. * &f.normal(p),
-            Geometry::Rotated(rot, geom) => geom.normal(&p.rotate(&rot)).rotate(&rot.mul(-1.)),
-            Geometry::Translated(v, geom) => geom.normal(&(p - &v)),
+            Geometry::Triangle(t) => t.normal(p),
+            Geometry::Flipped(f) => -1. * f.normal(p),
+            Geometry::Rotated(rot, geom) => geom.normal(p.rotate(*rot)).rotate(-1. * *rot),
+            Geometry::Translated(v, geom) => geom.normal(p - *v),
         }
     }
 
@@ -46,6 +49,7 @@ impl Hittable for Geometry {
         match self {
             Geometry::Sphere(s) => s.area(),
             Geometry::Plane(plane) => plane.area(),
+            Geometry::Triangle(t) => t.area(),
             Geometry::Flipped(f) => f.area(),
             Geometry::Rotated(_, geom) => geom.area(),
             Geometry::Translated(_, geom) => geom.area(),
@@ -56,9 +60,10 @@ impl Hittable for Geometry {
         match self {
             Geometry::Sphere(s) => s.sample(),
             Geometry::Plane(plane) => plane.sample(),
+            Geometry::Triangle(t) => t.sample(),
             Geometry::Flipped(f) => f.sample(),
-            Geometry::Rotated(rot, geom) => geom.sample().rotate(&rot.mul(-1.)),
-            Geometry::Translated(v, geom) => &geom.sample() - &v,
+            Geometry::Rotated(rot, geom) => geom.sample().rotate(-1. * *rot),
+            Geometry::Translated(v, geom) => geom.sample() - *v,
         }
     }
 }
@@ -80,12 +85,12 @@ impl Sphere {
 }
 
 impl Hittable for Sphere {
-    fn intersect(&self, r: &Ray) -> Option<f64> {
-        let v = &r.origin - &self.origin;
+    fn intersect(&self, r: Ray) -> Option<f64> {
+        let v = r.origin - self.origin;
 
-        let a = r.direction.mag2();
-        let b = 2. * r.direction.dot(&v);
-        let c = v.mag2() - self.radius2;
+        let a = r.direction.mag_2();
+        let b = 2. * r.direction.dot(v);
+        let c = v.mag_2() - self.radius2;
 
         let desc = b * b - 4. * a * c;
 
@@ -106,8 +111,8 @@ impl Hittable for Sphere {
         }
     }
 
-    fn normal(&self, p: &Vec3) -> Vec3 {
-        (p - &self.origin).unit()
+    fn normal(&self, p: Vec3) -> Vec3 {
+        (p - self.origin).unit()
     }
 
     fn area(&self) -> f64 {
@@ -122,7 +127,7 @@ impl Hittable for Sphere {
         let y = phi.sin() * 2. * (u * (1. - u)).sqrt();
         let z = 1. - 2. * u;
 
-        &Vec3::new(x, y, z).mul(self.radius2.sqrt()) + &self.origin
+        Vec3::new(x, y, z) * self.radius2.sqrt() + self.origin
     }
 }
 
@@ -170,13 +175,13 @@ impl Plane {
 }
 
 impl Hittable for Plane {
-    fn intersect(&self, r: &Ray) -> Option<f64> {
+    fn intersect(&self, r: Ray) -> Option<f64> {
         match &self.axis {
             Axis::X | Axis::XRev => {
-                if r.direction.x != 0. {
-                    let t = (self.pos - r.origin.x) / r.direction.x;
+                if r.direction.x() != 0. {
+                    let t = (self.pos - r.origin.x()) / r.direction.x();
                     let p = r.point(t);
-                    if self.u_range.contains(&p.y) && self.v_range.contains(&p.z) {
+                    if self.u_range.contains(&p.y()) && self.v_range.contains(&p.z()) {
                         Some(t)
                     } else {
                         None
@@ -186,10 +191,10 @@ impl Hittable for Plane {
                 }
             }
             Axis::Y | Axis::YRev => {
-                if r.direction.y != 0. {
-                    let t = (self.pos - r.origin.y) / r.direction.y;
+                if r.direction.y() != 0. {
+                    let t = (self.pos - r.origin.y()) / r.direction.y();
                     let p = r.point(t);
-                    if self.u_range.contains(&p.x) && self.v_range.contains(&p.z) {
+                    if self.u_range.contains(&p.x()) && self.v_range.contains(&p.z()) {
                         Some(t)
                     } else {
                         None
@@ -199,10 +204,10 @@ impl Hittable for Plane {
                 }
             }
             Axis::Z | Axis::ZRev => {
-                if r.direction.z != 0. {
-                    let t = (self.pos - r.origin.z) / r.direction.z;
+                if r.direction.z() != 0. {
+                    let t = (self.pos - r.origin.z()) / r.direction.z();
                     let p = r.point(t);
-                    if self.u_range.contains(&p.x) && self.v_range.contains(&p.y) {
+                    if self.u_range.contains(&p.x()) && self.v_range.contains(&p.y()) {
                         Some(t)
                     } else {
                         None
@@ -214,7 +219,7 @@ impl Hittable for Plane {
         }
     }
 
-    fn normal(&self, _p: &Vec3) -> Vec3 {
+    fn normal(&self, _p: Vec3) -> Vec3 {
         match &self.axis {
             Axis::X => Vec3::new(1., 0., 0.),
             Axis::XRev => Vec3::new(-1., 0., 0.),
@@ -244,6 +249,67 @@ impl Hittable for Plane {
 }
 
 #[derive(Debug, Clone)]
+pub struct Triangle {
+    p1: Vec3,
+    p2: Vec3,
+    p3: Vec3,
+    e1: Vec3,
+    e2: Vec3,
+    normal: Vec3,
+    area: f64,
+}
+
+impl Triangle {
+    pub fn new(p1: Vec3, p2: Vec3, p3: Vec3) -> Triangle {
+        let e1 = p2 - p1;
+        let e2 = p3 - p1;
+        let normal = e1.cross(e2);
+        Triangle {
+            p1,
+            p2,
+            p3,
+            e1,
+            e2,
+            normal: normal.unit(),
+            area: normal.mag() / 2.,
+        }
+    }
+}
+
+impl Hittable for Triangle {
+    /// Möller-Trumbore algorithm for triangle intersection.
+    fn intersect(&self, r: Ray) -> Option<f64> {
+        let t = r.origin - self.p1;
+        let p = r.direction.cross(self.e2);
+        let q = t.cross(self.e1);
+
+        let den = p.dot(self.e1);
+
+        let d = q.dot(self.e2) / den;
+        let u = p.dot(t) / den;
+        let v = q.dot(r.direction) / den;
+
+        if d < 0. || u < 0. || v < 0. || u + v > 1. {
+            None
+        } else {
+            Some(d)
+        }
+    }
+
+    fn normal(&self, _p: Vec3) -> Vec3 {
+        self.normal.clone()
+    }
+
+    fn area(&self) -> f64 {
+        self.area
+    }
+
+    fn sample(&self) -> Vec3 {
+        Vec3::new(0.0, 0.0, 0.0)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct AxisAlignedBoundingBox {
     x_range: Range<f64>,
     y_range: Range<f64>,
@@ -263,12 +329,12 @@ impl AxisAlignedBoundingBox {
         }
     }
 
-    fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64) -> bool {
+    fn intersect(&self, ray: Ray, tmin: f64, tmax: f64) -> bool {
         // TODO: Make this faster and take care of NaNs
 
-        let xmax = self.x_range.end - ray.origin.x;
-        let xmin = self.x_range.start - ray.origin.x;
-        let inv_x = 1. / ray.direction.x;
+        let xmax = self.x_range.end - ray.origin.x();
+        let xmin = self.x_range.start - ray.origin.x();
+        let inv_x = 1. / ray.direction.x();
 
         let (txmin, txmax) = if inv_x < 0. {
             (xmax * inv_x, xmin * inv_x)
@@ -283,9 +349,9 @@ impl AxisAlignedBoundingBox {
             return false;
         }
 
-        let ymax = self.y_range.end - ray.origin.y;
-        let ymin = self.y_range.start - ray.origin.y;
-        let inv_y = 1. / ray.direction.y;
+        let ymax = self.y_range.end - ray.origin.y();
+        let ymin = self.y_range.start - ray.origin.y();
+        let inv_y = 1. / ray.direction.y();
 
         let (tymin, tymax) = if inv_y < 0. {
             (ymax * inv_y, ymin * inv_y)
@@ -300,9 +366,9 @@ impl AxisAlignedBoundingBox {
             return false;
         }
 
-        let zmax = self.z_range.end - ray.origin.z;
-        let zmin = self.z_range.start - ray.origin.z;
-        let inv_z = 1. / ray.direction.z;
+        let zmax = self.z_range.end - ray.origin.z();
+        let zmin = self.z_range.start - ray.origin.z();
+        let inv_z = 1. / ray.direction.z();
 
         let (tzmin, tzmax) = if inv_z < 0. {
             (zmax * inv_z, zmin * inv_z)
@@ -367,12 +433,12 @@ impl AxisAlignedBoundingBox {
 impl From<&Sphere> for AxisAlignedBoundingBox {
     fn from(sphere: &Sphere) -> Self {
         let radius = sphere.radius2.sqrt();
-        let xmin = sphere.origin.x - radius;
-        let xmax = sphere.origin.x + radius;
-        let ymin = sphere.origin.y - radius;
-        let ymax = sphere.origin.y + radius;
-        let zmin = sphere.origin.z - radius;
-        let zmax = sphere.origin.z + radius;
+        let xmin = sphere.origin.x() - radius;
+        let xmax = sphere.origin.x() + radius;
+        let ymin = sphere.origin.y() - radius;
+        let ymax = sphere.origin.y() + radius;
+        let zmin = sphere.origin.z() - radius;
+        let zmax = sphere.origin.z() + radius;
         AxisAlignedBoundingBox::new(xmin, xmax, ymin, ymax, zmin, zmax)
     }
 }
@@ -399,11 +465,26 @@ impl From<&Plane> for AxisAlignedBoundingBox {
     }
 }
 
+impl From<&Triangle> for AxisAlignedBoundingBox {
+    fn from(t: &Triangle) -> Self {
+        let xmin = t.p1.x().min(t.p2.x().min(t.p3.x()));
+        let ymin = t.p1.y().min(t.p2.y().min(t.p3.y()));
+        let zmin = t.p1.z().min(t.p2.z().min(t.p3.z()));
+
+        let xmax = t.p1.x().max(t.p2.x().max(t.p3.x()));
+        let ymax = t.p1.y().max(t.p2.y().max(t.p3.y()));
+        let zmax = t.p1.z().max(t.p2.z().max(t.p3.z()));
+
+        AxisAlignedBoundingBox::new(xmin, xmax, ymin, ymax, zmin, zmax)
+    }
+}
+
 impl From<&Geometry> for AxisAlignedBoundingBox {
     fn from(geom: &Geometry) -> Self {
         match geom {
             Geometry::Sphere(s) => s.into(),
             Geometry::Plane(p) => p.into(),
+            Geometry::Triangle(t) => t.into(),
             Geometry::Flipped(f) => (&**f).into(),
             // TODO: Instanced bounding boxes do not work
             Geometry::Rotated(_, _) => panic!("Not implemented"),
@@ -423,7 +504,7 @@ fn get_split_ind(axis: Axis, split: f64, data: &[(Vec3, Object)]) -> usize {
     match axis {
         Axis::X | Axis::XRev => {
             for (i, (v, _)) in data.iter().enumerate() {
-                if v.x > split {
+                if v.x() > split {
                     ind = i;
                     break;
                 }
@@ -431,7 +512,7 @@ fn get_split_ind(axis: Axis, split: f64, data: &[(Vec3, Object)]) -> usize {
         }
         Axis::Y | Axis::YRev => {
             for (i, (v, _)) in data.iter().enumerate() {
-                if v.y > split {
+                if v.y() > split {
                     ind = i;
                     break;
                 }
@@ -439,7 +520,7 @@ fn get_split_ind(axis: Axis, split: f64, data: &[(Vec3, Object)]) -> usize {
         }
         Axis::Z | Axis::ZRev => {
             for (i, (v, _)) in data.iter().enumerate() {
-                if v.z > split {
+                if v.z() > split {
                     ind = i;
                     break;
                 }
@@ -501,7 +582,7 @@ impl Bvh {
         }
     }
 
-    pub fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64) -> Option<(f64, Object)> {
+    pub fn intersect(&self, ray: Ray, tmin: f64, tmax: f64) -> Option<(f64, Object)> {
         self.bvh.intersect(ray, tmin, tmax)
     }
 
@@ -540,7 +621,7 @@ impl BvhTree {
 
             let mean_center: Vec3 = centers
                 .iter()
-                .fold(Vec3::new(0., 0., 0.), |acc, el| &acc + &el)
+                .fold(Vec3::new(0., 0., 0.), |acc, el| acc + *el)
                 .mul(1. / centers.len() as f64);
 
             let mut data: Vec<(Vec3, Object)> = centers.into_iter().zip(objects).collect();
@@ -548,8 +629,10 @@ impl BvhTree {
             // Find the index to split the sorted objects. If splitting by the
             // SAH of the bounding box would lead to having all elements
             // in one side we split along object mean position instead.
+
+            // We split by the longest axis first.
             let ind = if x >= y && x >= z {
-                data.sort_by(|a, b| a.0.x.partial_cmp(&b.0.x).unwrap());
+                data.sort_by(|a, b| a.0.x().partial_cmp(&b.0.x()).unwrap());
                 let split_dist = x * 0.001; // Do 999 splits;
                 let mut min_ind = get_split_ind(Axis::X, bbox.x_range.start + split_dist, &data);
                 let mut min_sah =
@@ -566,10 +649,10 @@ impl BvhTree {
                 if min_ind != 0 {
                     min_ind
                 } else {
-                    get_split_ind(Axis::X, mean_center.x, &data)
+                    get_split_ind(Axis::X, mean_center.x(), &data)
                 }
             } else if y >= z {
-                data.sort_by(|a, b| a.0.y.partial_cmp(&b.0.y).unwrap());
+                data.sort_by(|a, b| a.0.y().partial_cmp(&b.0.y()).unwrap());
                 let split_dist = y * 0.001; // Do 999 splits;
                 let mut min_ind = get_split_ind(Axis::Y, bbox.y_range.start + split_dist, &data);
                 let mut min_sah =
@@ -586,10 +669,10 @@ impl BvhTree {
                 if min_ind != 0 {
                     min_ind
                 } else {
-                    get_split_ind(Axis::Y, mean_center.y, &data)
+                    get_split_ind(Axis::Y, mean_center.y(), &data)
                 }
             } else {
-                data.sort_by(|a, b| a.0.z.partial_cmp(&b.0.z).unwrap());
+                data.sort_by(|a, b| a.0.z().partial_cmp(&b.0.z()).unwrap());
                 let split_dist = z * 0.001; // Do 999 splits;
                 let mut min_ind = get_split_ind(Axis::Z, bbox.z_range.start + split_dist, &data);
                 let mut min_sah =
@@ -606,10 +689,12 @@ impl BvhTree {
                 if min_ind != 0 {
                     min_ind
                 } else {
-                    get_split_ind(Axis::Z, mean_center.z, &data)
+                    get_split_ind(Axis::Z, mean_center.z(), &data)
                 }
             };
-
+            // If ind == 0 then all objects had the same center position along
+            // the split axis so we just split in the middle...
+            let ind = if ind != 0 { ind } else { data.len() / 2 };
             // TODO: There must be a better way to sort geometry and centers together.
             let sorted_objects: Vec<Object> = data.into_iter().map(|item| item.1).collect();
             let (split1, split2) = sorted_objects.split_at(ind);
@@ -619,12 +704,12 @@ impl BvhTree {
                     if split1.len() > 1 {
                         BvhTree::build_sah(split1.to_vec())
                     } else {
-                        BvhTree::LeafNode(split1.to_vec().remove(0))
+                        BvhTree::LeafNode(split1[0].clone())
                     },
                     if split2.len() > 1 {
                         BvhTree::build_sah(split2.to_vec())
                     } else {
-                        BvhTree::LeafNode(split2.to_vec().remove(0))
+                        BvhTree::LeafNode(split2[0].clone())
                     },
                 ],
             )
@@ -663,7 +748,7 @@ impl BvhTree {
 
             let mean_center: Vec3 = centers
                 .iter()
-                .fold(Vec3::new(0., 0., 0.), |acc, el| &acc + &el)
+                .fold(Vec3::new(0., 0., 0.), |acc, el| acc + *el)
                 .mul(1. / centers.len() as f64);
 
             let mut data: Vec<(Vec3, Object)> = centers.into_iter().zip(objects).collect();
@@ -672,31 +757,33 @@ impl BvhTree {
             // midpoint of the bounding box would lead to having all elements
             // in one side we split along object mean position instead.
             let ind = if x >= y && x >= z {
-                data.sort_by(|a, b| a.0.x.partial_cmp(&b.0.x).unwrap());
-                let ind = get_split_ind(Axis::X, bbox.get_center().x, &data);
+                data.sort_by(|a, b| a.0.x().partial_cmp(&b.0.x()).unwrap());
+                let ind = get_split_ind(Axis::X, bbox.get_center().x(), &data);
                 if ind != 0 {
                     ind
                 } else {
-                    get_split_ind(Axis::X, mean_center.x, &data)
+                    get_split_ind(Axis::X, mean_center.x(), &data)
                 }
             } else if y >= z {
-                data.sort_by(|a, b| a.0.y.partial_cmp(&b.0.y).unwrap());
-                let ind = get_split_ind(Axis::Y, bbox.get_center().y, &data);
+                data.sort_by(|a, b| a.0.y().partial_cmp(&b.0.y()).unwrap());
+                let ind = get_split_ind(Axis::Y, bbox.get_center().y(), &data);
                 if ind != 0 {
                     ind
                 } else {
-                    get_split_ind(Axis::Y, mean_center.y, &data)
+                    get_split_ind(Axis::Y, mean_center.y(), &data)
                 }
             } else {
-                data.sort_by(|a, b| a.0.z.partial_cmp(&b.0.z).unwrap());
-                let ind = get_split_ind(Axis::Z, bbox.get_center().z, &data);
+                data.sort_by(|a, b| a.0.z().partial_cmp(&b.0.z()).unwrap());
+                let ind = get_split_ind(Axis::Z, bbox.get_center().z(), &data);
                 if ind != 0 {
                     ind
                 } else {
-                    get_split_ind(Axis::Z, mean_center.z, &data)
+                    get_split_ind(Axis::Z, mean_center.z(), &data)
                 }
             };
-
+            // If ind == 0 then all objects had the same center position along
+            // the split axis so we just split in the middle...
+            let ind = if ind != 0 { ind } else { data.len() / 2 };
             // TODO: There must be a better way to sort geometry and centers together.
             let sorted_objects: Vec<Object> = data.into_iter().map(|item| item.1).collect();
             let (split1, split2) = sorted_objects.split_at(ind);
@@ -706,12 +793,12 @@ impl BvhTree {
                     if split1.len() > 1 {
                         BvhTree::build_midpoint(split1.to_vec())
                     } else {
-                        BvhTree::LeafNode(split1.to_vec().remove(0))
+                        BvhTree::LeafNode(split1[0].clone())
                     },
                     if split2.len() > 1 {
                         BvhTree::build_midpoint(split2.to_vec())
                     } else {
-                        BvhTree::LeafNode(split2.to_vec().remove(0))
+                        BvhTree::LeafNode(split2[0].clone())
                     },
                 ],
             )
@@ -728,7 +815,7 @@ impl BvhTree {
         }
     }
 
-    fn intersect(&self, ray: &Ray, tmin: f64, tmax: f64) -> Option<(f64, Object)> {
+    fn intersect(&self, ray: Ray, tmin: f64, tmax: f64) -> Option<(f64, Object)> {
         match self {
             BvhTree::Node(bbox, children) => {
                 if bbox.intersect(ray, tmin, tmax) {
@@ -793,7 +880,7 @@ mod tests {
     fn test_intersect_sphere_outside() {
         let sphere = Sphere::new(1., Vec3::new(0., 0., 0.));
         let ray = Ray::new(Vec3::new(0., 0., 5.), Vec3::new(0., 0., -1.));
-        let t = sphere.intersect(&ray).unwrap();
+        let t = sphere.intersect(ray).unwrap();
         assert!(t > 0.);
     }
 
@@ -801,7 +888,7 @@ mod tests {
     fn test_intersect_sphere_inside() {
         let sphere = Sphere::new(1., Vec3::new(0., 0., 0.));
         let ray = Ray::new(Vec3::new(0., 0., 0.), Vec3::new(0., 1., 0.));
-        let t = sphere.intersect(&ray).unwrap();
+        let t = sphere.intersect(ray).unwrap();
         assert!(t > 0.);
     }
 
@@ -809,7 +896,7 @@ mod tests {
     fn test_intersect_sphere_miss() {
         let sphere = Sphere::new(1., Vec3::new(0., 0., 0.));
         let ray = Ray::new(Vec3::new(0., 5., 0.), Vec3::new(0., 1., 0.));
-        let t = sphere.intersect(&ray);
+        let t = sphere.intersect(ray);
         assert!(t.is_none());
     }
 
@@ -823,7 +910,7 @@ mod tests {
     fn test_intesect_x_plane_front() {
         let plane = Plane::new(Axis::X, -1., 1., -1., 1., 0.);
         let ray = Ray::new(Vec3::new(5., 0., 0.), Vec3::new(-1., 0., 0.));
-        let t = plane.intersect(&ray).unwrap();
+        let t = plane.intersect(ray).unwrap();
         assert!(t > 0.);
     }
 
@@ -831,7 +918,7 @@ mod tests {
     fn test_intesect_x_plane_back() {
         let plane = Plane::new(Axis::X, -1., 1., -1., 1., 0.);
         let ray = Ray::new(Vec3::new(-5., 0., 0.), Vec3::new(1., 0., 0.));
-        let t = plane.intersect(&ray).unwrap();
+        let t = plane.intersect(ray).unwrap();
         assert!(t > 0.);
     }
 
@@ -839,7 +926,7 @@ mod tests {
     fn test_intesect_y_plane_front() {
         let plane = Plane::new(Axis::Y, -1., 1., -1., 1., 0.);
         let ray = Ray::new(Vec3::new(0., 5., 0.), Vec3::new(0., -1., 0.));
-        let t = plane.intersect(&ray).unwrap();
+        let t = plane.intersect(ray).unwrap();
         assert!(t > 0.);
     }
 
@@ -847,7 +934,7 @@ mod tests {
     fn test_intesect_y_plane_back() {
         let plane = Plane::new(Axis::Y, -1., 1., -1., 1., 0.);
         let ray = Ray::new(Vec3::new(0., -5., 0.), Vec3::new(0., 1., 0.));
-        let t = plane.intersect(&ray).unwrap();
+        let t = plane.intersect(ray).unwrap();
         assert!(t > 0.);
     }
 
@@ -855,7 +942,7 @@ mod tests {
     fn test_intesect_z_plane_front() {
         let plane = Plane::new(Axis::Z, -1., 1., -1., 1., 0.);
         let ray = Ray::new(Vec3::new(0., 0., 5.), Vec3::new(0., 0., -1.));
-        let t = plane.intersect(&ray).unwrap();
+        let t = plane.intersect(ray).unwrap();
         assert!(t > 0.);
     }
 
@@ -863,7 +950,7 @@ mod tests {
     fn test_intesect_z_plane_back() {
         let plane = Plane::new(Axis::Z, -1., 1., -1., 1., 0.);
         let ray = Ray::new(Vec3::new(0., 0., -5.), Vec3::new(0., 0., 1.));
-        let t = plane.intersect(&ray).unwrap();
+        let t = plane.intersect(ray).unwrap();
         assert!(t > 0.);
     }
 
@@ -878,9 +965,9 @@ mod tests {
         let plane = Plane::new(Axis::Z, -1., 1., -1., 1., 0.);
         let sample = plane.sample();
         assert!(
-            plane.u_range.contains(&sample.x)
-                && plane.v_range.contains(&sample.y)
-                && sample.z == 0.
+            plane.u_range.contains(&sample.x())
+                && plane.v_range.contains(&sample.y())
+                && sample.z() == 0.
         );
     }
 
@@ -888,42 +975,42 @@ mod tests {
     fn test_aabb_intersection_outside_x() {
         let bbox = AxisAlignedBoundingBox::new(-1., 1., -1., 1., -1., 1.);
         let ray = Ray::new(Vec3::new(-5., 0., 0.), Vec3::new(1., 0., 0.));
-        assert!(bbox.intersect(&ray, 0.001, 1000.));
+        assert!(bbox.intersect(ray, 0.001, 1000.));
     }
 
     #[test]
     fn test_aabb_intersection_outside_y() {
         let bbox = AxisAlignedBoundingBox::new(-1., 1., -1., 1., -1., 1.);
         let ray = Ray::new(Vec3::new(0., -5., 0.), Vec3::new(0., 1., 0.));
-        assert!(bbox.intersect(&ray, 0.0001, 1000.));
+        assert!(bbox.intersect(ray, 0.0001, 1000.));
     }
 
     #[test]
     fn test_aabb_intersection_outside_z() {
         let bbox = AxisAlignedBoundingBox::new(-1., 1., -1., 1., -1., 1.);
         let ray = Ray::new(Vec3::new(0., 0., -5.), Vec3::new(0., 0., 1.));
-        assert!(bbox.intersect(&ray, 0.001, 1000.));
+        assert!(bbox.intersect(ray, 0.001, 1000.));
     }
 
     #[test]
     fn test_aabb_intersection_inside() {
         let bbox = AxisAlignedBoundingBox::new(-1., 1., -1., 1., -1., 1.);
         let ray = Ray::new(Vec3::new(0., 0., 0.), Vec3::new(0., 0., 1.));
-        assert!(bbox.intersect(&ray, 0.001, 1000.));
+        assert!(bbox.intersect(ray, 0.001, 1000.));
     }
 
     #[test]
     fn test_aabb_intersection_miss() {
         let bbox = AxisAlignedBoundingBox::new(-1., 1., -1., 1., -1., 1.);
         let ray = Ray::new(Vec3::new(1.1, 0., 0.), Vec3::new(0., 1., 1.));
-        assert!(!bbox.intersect(&ray, 0.001, 1000.));
+        assert!(!bbox.intersect(ray, 0.001, 1000.));
     }
 
     #[test]
     fn test_aabb_intersection_miss2() {
         let bbox = AxisAlignedBoundingBox::new(-1., 1., -1., 1., -1., 1.);
         let ray = Ray::new(Vec3::new(2., 0., 0.), Vec3::new(-1., -2., 0.));
-        assert!(!bbox.intersect(&ray, 0.001, 1000.));
+        assert!(!bbox.intersect(ray, 0.001, 1000.));
     }
 
     #[test]
@@ -978,6 +1065,62 @@ mod tests {
     }
 
     #[test]
+    fn test_bvh_midpoint_construction_sphere_in_center() {
+        let top = Object::plane(
+            Axis::YRev,
+            -2.5,
+            2.5,
+            -2.5,
+            2.5,
+            2.5,
+            Material::NoReflect,
+            Emission::Dark,
+        );
+        let bottom = Object::plane(
+            Axis::Y,
+            -2.5,
+            2.5,
+            -2.5,
+            2.5,
+            -2.5,
+            Material::NoReflect,
+            Emission::Dark,
+        );
+        let back = Object::plane(
+            Axis::Z,
+            -2.5,
+            2.5,
+            -2.5,
+            2.5,
+            -2.5,
+            Material::NoReflect,
+            Emission::Dark,
+        );
+        let light = Object::plane(
+            Axis::YRev,
+            -0.8,
+            0.8,
+            -0.8,
+            0.8,
+            2.4999,
+            Material::NoReflect,
+            Emission::Emissive(5., Vec3::new(1., 1., 1.)),
+        );
+        let triangle1 = Object::triangle(
+            Vec3::new(-1., -1., -0.5),
+            Vec3::new(-0.5, -1., -1.),
+            Vec3::new(1., 1., -1.5),
+            Material::NoReflect,
+            Emission::Dark,
+        );
+
+        let objects = vec![top, bottom, back, light, triangle1];
+
+        let bvh = Bvh::build(BvhHeuristic::Midpoint, objects);
+        assert_eq!("Bvh { bvh: Node(AxisAlignedBoundingBox { x_range: -2.5..2.5, y_range: -2.5..2.5, z_range: -2.5..2.5 }, [Node(AxisAlignedBoundingBox { x_range: -2.5..2.5, y_range: -2.5..2.5, z_range: -2.5..2.5 }, [LeafNode(Object { geom: Plane(Plane { u_range: -2.5..2.5, v_range: -2.5..2.5, pos: 2.5, axis: YRev }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Plane(Plane { u_range: -2.5..2.5, v_range: -2.5..2.5, pos: -2.5, axis: Y }), mat: NoReflect, emission: Dark })]), Node(AxisAlignedBoundingBox { x_range: -2.5..2.5, y_range: -2.5..2.5, z_range: -2.5..0.8 }, [LeafNode(Object { geom: Plane(Plane { u_range: -2.5..2.5, v_range: -2.5..2.5, pos: -2.5, axis: Z }), mat: NoReflect, emission: Dark }), LeafNode(Object { geom: Plane(Plane { u_range: -0.8..0.8, v_range: -0.8..0.8, pos: 2.4999, axis: YRev }), mat: NoReflect, emission: Emissive(5.0, Vec3 { x: 1.0, y: 1.0, z: 1.0 }) }), LeafNode(Object { geom: Triangle(Triangle { p1: Vec3 { x: -1.0, y: -1.0, z: -0.5 }, p2: Vec3 { x: -0.5, y: -1.0, z: -1.0 }, p3: Vec3 { x: 1.0, y: 1.0, z: -1.5 }, e1: Vec3 { x: 0.5, y: 0.0, z: -0.5 }, e2: Vec3 { x: 2.0, y: 2.0, z: -1.0 }, normal: Vec3 { x: 0.6666666666666666, y: -0.3333333333333333, z: 0.6666666666666666 }, area: 0.75 }), mat: NoReflect, emission: Dark })])]), heuristic: Midpoint }", format!("{:?}", bvh));
+    }
+
+    #[test]
     fn test_bvh_intersect_node_leafnode() {
         let sphere = Object::sphere(
             1.,
@@ -987,7 +1130,7 @@ mod tests {
         );
         let bvh = BvhTree::Node((&sphere).into(), vec![BvhTree::LeafNode(sphere)]);
         let ray = Ray::new(Vec3::new(-5., 0., 0.), Vec3::new(1., 0., 0.));
-        let (t, _) = bvh.intersect(&ray, 0.001, 1000.).unwrap();
+        let (t, _) = bvh.intersect(ray, 0.001, 1000.).unwrap();
 
         assert_eq!(4., t);
     }

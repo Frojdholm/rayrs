@@ -1,0 +1,36 @@
+use super::geometry::Triangle;
+use super::vecmath::Vec3;
+
+use std::fs::File;
+use std::io::{self, BufRead};
+
+pub fn load_obj_file(filename: &str) -> io::Result<Vec<Triangle>> {
+    let file = File::open(filename)?;
+    let reader = io::BufReader::new(file);
+
+    let mut vertices = Vec::new();
+    let mut triangles = Vec::new();
+
+    for line in reader.lines() {
+        let text = line?;
+        let v: Vec<_> = text.split(' ').collect();
+        if v[0] == "v" {
+            let x: f64 = v[1].parse().unwrap();
+            let y: f64 = v[2].parse().unwrap();
+            let z: f64 = v[3].parse().unwrap();
+            vertices.push(Vec3::new(x, y, z));
+        } else if v[0] == "f" {
+            let i: usize = v[1].parse().unwrap();
+            let j: usize = v[2].parse().unwrap();
+            let k: usize = v[3].parse().unwrap();
+
+            triangles.push(Triangle::new(
+                vertices[i - 1].clone(),
+                vertices[j - 1].clone(),
+                vertices[k - 1].clone(),
+            ));
+        }
+    }
+
+    Ok(triangles)
+}

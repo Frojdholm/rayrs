@@ -27,7 +27,7 @@ impl Image {
     pub fn get_width(&self) -> usize {
         self.width
     }
-    
+
     pub fn get_height(&self) -> usize {
         self.height
     }
@@ -46,9 +46,9 @@ impl Image {
         let mut v = Vec::with_capacity(self.image.len() * 3);
         for val in self.image.iter() {
             let pixel = val.clip(0., 1.0).pow(gamma);
-            let r = (255.99 * pixel.x) as u8;
-            let g = (255.99 * pixel.y) as u8;
-            let b = (255.99 * pixel.z) as u8;
+            let r = (255.99 * pixel.x()) as u8;
+            let g = (255.99 * pixel.y()) as u8;
+            let b = (255.99 * pixel.z()) as u8;
             v.push(r);
             v.push(g);
             v.push(b);
@@ -60,11 +60,18 @@ impl Image {
         let gamma = 1. / 2.2;
         let mut f = File::create(filename)?;
         let raw_pixels = self.into_raw_bytes(gamma);
-        
+
         match image_format {
             ImageFormat::PpmAscii => {
                 write!(f, "P3\n{} {}\n{}\n", self.width, self.height, 255)?;
-                f.write_all(raw_pixels.into_iter().map(|v| v.to_string()).collect::<Vec<String>>().join(" ").as_bytes())
+                f.write_all(
+                    raw_pixels
+                        .into_iter()
+                        .map(|v| v.to_string())
+                        .collect::<Vec<String>>()
+                        .join(" ")
+                        .as_bytes(),
+                )
             }
             ImageFormat::PpmBinary => {
                 write!(f, "P6\n{} {}\n{}\n", self.width, self.height, 255)?;
@@ -72,4 +79,4 @@ impl Image {
             }
         }
     }
-} 
+}

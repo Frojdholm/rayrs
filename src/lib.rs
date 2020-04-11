@@ -1,18 +1,19 @@
 pub mod geometry;
+pub mod image;
 pub mod material;
 pub mod vecmath;
-pub mod image;
+pub mod wavefront_obj;
 
 use vecmath::Vec3;
 
-use geometry::{Axis, Bvh, BvhHeuristic, Geometry, Hittable, Plane, Sphere};
+use geometry::{Axis, Bvh, BvhHeuristic, Geometry, Hittable, Plane, Sphere, Triangle};
 use material::{Brdf, DiracBrdf, Emission, Emitting, Material, MixKind, Pdf};
 
 use rand::Rng;
 
 use std::ops::{Add, Mul, Range};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Ray {
     pub origin: Vec3,
     pub direction: Vec3,
@@ -24,15 +25,15 @@ impl Ray {
     }
 
     fn point(&self, t: f64) -> Vec3 {
-        &self.origin + &(&self.direction * t)
+        self.origin + self.direction * t
     }
 
-    fn rotate(&self, rot: &Vec3) -> Ray {
+    fn rotate(&self, rot: Vec3) -> Ray {
         Ray::new(self.origin.rotate(rot), self.direction.rotate(rot))
     }
 
-    fn translate(&self, v: &Vec3) -> Ray {
-        Ray::new(&self.origin + &v, self.direction.clone())
+    fn translate(&self, v: Vec3) -> Ray {
+        Ray::new(self.origin + v, self.direction.clone())
     }
 }
 
@@ -67,9 +68,9 @@ impl Camera {
 
         let ppc = ((ppi as f64) * 2.54).round() as u32;
 
-        let z = (&lookat - &origin).unit();
-        let x = up.cross(&z).unit();
-        let y = z.cross(&x).unit();
+        let z = (lookat - origin).unit();
+        let x = up.cross(z).unit();
+        let y = z.cross(x).unit();
 
         Camera {
             origin,
@@ -81,7 +82,7 @@ impl Camera {
             ppc,
             e_x: x,
             e_y: y,
-            z: (width.min(height) / (fov.to_radians() / 2.).tan()) * &z,
+            z: (width.min(height) / (fov.to_radians() / 2.).tan()) * z,
         }
     }
 
@@ -100,10 +101,37 @@ impl Camera {
         let x: f64 = (j + rand::random::<f64>()) / (self.ppc as f64) - self.width / 2.;
         let y: f64 = (i + rand::random::<f64>()) / (self.ppc as f64) - self.height / 2.;
 
-        Ray::new(
-            self.origin.clone(),
-            self.z.add(&self.e_x.mul(x)).add(&self.e_y.mul(y)),
-        )
+        Ray::new(self.origin.clone(), self.z + x * self.e_x + y * self.e_y)
+    }
+}
+
+#[derive(Debug)]
+struct ListAccelerator {
+    objects: Vec<Object>,
+}
+
+impl ListAccelerator {
+    fn new(objects: Vec<Object>) -> Self {
+        ListAccelerator { objects }
+    }
+
+    fn intersect(&self, ray: Ray, tmin: f64, tmax: f64) -> Option<(f64, Object)> {
+        let mut t = tmax;
+        let mut obj = None;
+        for child in &self.objects {
+            if let Some(t_hit) = child.geom.intersect(ray) {
+                if t_hit > tmin && t_hit < t {
+                    t = t_hit;
+                    obj = Some((*child).clone());
+                }
+            }
+        }
+
+        if obj.is_some() {
+            Some((t, obj.unwrap()))
+        } else {
+            None
+        }
     }
 }
 
@@ -271,18 +299,105 @@ impl Scene {
             Material::NoReflect,
             Emission::Emissive(5., Vec3::new(1., 1., 1.)),
         );
-
+        let triangle1 = Object::triangle(
+            Vec3::new(-1., -1., 0.),
+            Vec3::new(1., -1., 0.),
+            Vec3::new(0., 1., 0.),
+            white.clone(),
+            Emission::Dark,
+        );
         let sphere1 = Object::sphere(0.5, Vec3::new(-1., -2., 0.5), mix.clone(), Emission::Dark);
         let sphere2 = Object::sphere(1., Vec3::new(0.5, -1.5, -1.3), mix.clone(), Emission::Dark);
 
-        let objects = vec![left, right, top, bottom, back, light, sphere1, sphere2];
+        let objects = vec![
+            left, right, top, bottom, back, light, sphere1, sphere2, triangle1,
+        ];
         Scene::new(objects, z_near, z_far)
     }
 
-    pub fn background(&self, _dir: &Vec3) -> Vec3 {
-        // let y = (dir.unit().y + 1.) / 2.;
-        // &Vec3::new(0., 0., 1.).mul(y) + &Vec3::new(1., 1., 1.).mul(1. - y)
-        Vec3::new(0., 0., 0.)
+    pub fn dragon(z_near: f64, z_far: f64) -> Self {
+        let green = Material::Diffuse(1., Vec3::new(0., 1., 0.));
+        let red = Material::Diffuse(1., Vec3::new(1., 0., 0.));
+        let white = Material::Diffuse(1., Vec3::new(1., 1., 1.));
+        let mirror = Material::Mirror(1., Vec3::new(1., 1., 1.));
+        let mix = Material::Mix(
+            MixKind::Fresnel(1.5),
+            Box::new(mirror.clone()),
+            Box::new(white.clone()),
+        );
+
+        let left = Object::plane(
+            Axis::X,
+            -2.5,
+            2.5,
+            -2.5,
+            2.5,
+            -2.5,
+            red.clone(),
+            Emission::Dark,
+        );
+        let right = Object::plane(
+            Axis::XRev,
+            -2.5,
+            2.5,
+            -2.5,
+            2.5,
+            2.5,
+            green.clone(),
+            Emission::Dark,
+        );
+        let top = Object::plane(
+            Axis::YRev,
+            -2.5,
+            2.5,
+            -2.5,
+            2.5,
+            2.5,
+            white.clone(),
+            Emission::Dark,
+        );
+        let bottom = Object::plane(
+            Axis::Y,
+            -2.5,
+            2.5,
+            -2.5,
+            2.5,
+            -2.5,
+            white.clone(),
+            Emission::Dark,
+        );
+        let back = Object::plane(
+            Axis::Z,
+            -2.5,
+            2.5,
+            -2.5,
+            2.5,
+            -2.5,
+            white.clone(),
+            Emission::Dark,
+        );
+        let light = Object::plane(
+            Axis::YRev,
+            -0.8,
+            0.8,
+            -0.8,
+            0.8,
+            2.4999,
+            Material::NoReflect,
+            Emission::Emissive(5., Vec3::new(1., 1., 1.)),
+        );
+
+        let dragon = wavefront_obj::load_obj_file("dragon.obj").unwrap();
+        let mut dragon = Object::from_triangles(dragon, white.clone(), Emission::Dark);
+        let mut objects = vec![left, right, top, bottom, back, light];
+        objects.append(&mut dragon);
+        Scene::new(objects, z_near, z_far)
+    }
+
+    pub fn background(&self, dir: Vec3) -> Vec3 {
+        let y = (dir.unit().y() + 1.) / 2.;
+        Vec3::new(0., 0., 1.).mul(y) + Vec3::new(1., 1., 1.).mul(1. - y)
+        //Vec3::new(0., 0., 0.)
     }
 }
 
@@ -317,6 +432,24 @@ impl Object {
             mat,
             emission,
         }
+    }
+
+    pub fn triangle(p1: Vec3, p2: Vec3, p3: Vec3, mat: Material, emission: Emission) -> Object {
+        Object {
+            geom: Geometry::Triangle(Triangle::new(p1, p2, p3)),
+            mat,
+            emission,
+        }
+    }
+
+    pub fn from_triangles(tris: Vec<Triangle>, mat: Material, emission: Emission) -> Vec<Object> {
+        tris.into_iter()
+            .map(|item| Object {
+                geom: Geometry::Triangle(item),
+                mat: mat.clone(),
+                emission: emission.clone(),
+            })
+            .collect()
     }
 
     pub fn rotated_translated_plane(
@@ -355,61 +488,61 @@ impl Object {
         vec![
             Object::plane(
                 Axis::X,
-                lower_left.y,
-                upper_right.y,
-                lower_left.z,
-                upper_right.z,
-                lower_left.x,
+                lower_left.y(),
+                upper_right.y(),
+                lower_left.z(),
+                upper_right.z(),
+                lower_left.x(),
                 mat.clone(),
                 emission.clone(),
             ),
             Object::plane(
                 Axis::XRev,
-                lower_left.y,
-                upper_right.y,
-                lower_left.z,
-                upper_right.z,
-                upper_right.x,
+                lower_left.y(),
+                upper_right.y(),
+                lower_left.z(),
+                upper_right.z(),
+                upper_right.x(),
                 mat.clone(),
                 emission.clone(),
             ),
             Object::plane(
                 Axis::ZRev,
-                lower_left.x,
-                upper_right.x,
-                lower_left.y,
-                upper_right.y,
-                lower_left.z,
+                lower_left.x(),
+                upper_right.x(),
+                lower_left.y(),
+                upper_right.y(),
+                lower_left.z(),
                 mat.clone(),
                 emission.clone(),
             ),
             Object::plane(
                 Axis::Z,
-                lower_left.x,
-                upper_right.x,
-                lower_left.y,
-                upper_right.y,
-                upper_right.z,
+                lower_left.x(),
+                upper_right.x(),
+                lower_left.y(),
+                upper_right.y(),
+                upper_right.z(),
                 mat.clone(),
                 emission.clone(),
             ),
             Object::plane(
                 Axis::YRev,
-                lower_left.x,
-                upper_right.x,
-                lower_left.z,
-                upper_right.z,
-                lower_left.y,
+                lower_left.x(),
+                upper_right.x(),
+                lower_left.z(),
+                upper_right.z(),
+                lower_left.y(),
                 mat.clone(),
                 emission.clone(),
             ),
             Object::plane(
                 Axis::Y,
-                lower_left.x,
-                upper_right.x,
-                lower_left.z,
-                upper_right.z,
-                lower_left.y,
+                lower_left.x(),
+                upper_right.x(),
+                lower_left.z(),
+                upper_right.z(),
+                lower_left.y(),
                 mat.clone(),
                 emission.clone(),
             ),
@@ -422,18 +555,18 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32, rays: &mut f64) -> Vec3
 
     for _ in 0..max_bounces {
         *rays += 1.;
-        if let Some((t, obj)) = s.bvh.intersect(&r, s.t_range.start, s.t_range.end) {
+        if let Some((t, obj)) = s.bvh.intersect(r, s.t_range.start, s.t_range.end) {
             let position = r.point(t);
-            let normal = obj.geom.normal(&position);
+            let normal = obj.geom.normal(position);
             let incoming = r.direction.unit().mul(-1.);
 
             let (color, new_ray) = if obj.mat.is_dirac() {
                 // Materials that contain dirac deltas need to be handled
                 // explicitly.
                 let (color, new_ray) = obj.mat.evaluate(
-                    &position,
-                    &normal,
-                    &incoming,
+                    position,
+                    normal,
+                    incoming,
                     Some(Pdf::Hittable(s.lights[0].clone())),
                 );
                 if new_ray.is_none() {
@@ -449,20 +582,20 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32, rays: &mut f64) -> Vec3
                     Box::new(Pdf::Hittable(s.lights[0].clone())),
                 );
 
-                let outgoing = pdf.generate(&position, &normal, &incoming);
+                let outgoing = pdf.generate(position, normal, incoming);
                 (
                     obj.mat
-                        .brdf(&position, &normal, &incoming, &outgoing)
-                        .mul(1. / pdf.value(&position, &normal, &incoming, &outgoing)),
+                        .brdf(position, normal, incoming, outgoing)
+                        .mul(1. / pdf.value(position, normal, incoming, outgoing)),
                     Ray::new(position, outgoing),
                 )
             } else {
                 // If we hit a non-reflecting object we can just return.
-                return &throughput * &obj.emission.emit();
+                return throughput * obj.emission.emit();
             };
-            throughput = throughput.mul(&color).add(&obj.emission.emit());
+            throughput = throughput.mul(color).add(obj.emission.emit());
 
-            let p = throughput.x.max(throughput.y).max(throughput.z);
+            let p = throughput.x().max(throughput.y()).max(throughput.z());
             if rand::random::<f64>() > p {
                 return throughput;
             }
@@ -470,7 +603,7 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32, rays: &mut f64) -> Vec3
             throughput = throughput.mul(1. / p);
             r = new_ray;
         } else {
-            return &throughput * &s.background(&r.direction);
+            return throughput * s.background(r.direction);
         }
     }
 
