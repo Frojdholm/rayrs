@@ -19,7 +19,7 @@ fn main() -> Result<()> {
         50,
     );
 
-    let s = Scene::dragon(0.000001, 1000000.);
+    let s = Scene::dragon(0.000_001, 1_000_000.);
 
     let mut image = Image::new(c.x_pixels(), c.y_pixels());
     let now = Instant::now();

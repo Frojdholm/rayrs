@@ -25,9 +25,9 @@ pub fn load_obj_file(filename: &str) -> io::Result<Vec<Triangle>> {
             let k: usize = v[3].parse().unwrap();
 
             triangles.push(Triangle::new(
-                vertices[i - 1].clone(),
-                vertices[j - 1].clone(),
-                vertices[k - 1].clone(),
+                vertices[i - 1],
+                vertices[j - 1],
+                vertices[k - 1],
             ));
         }
     }

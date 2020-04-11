@@ -32,9 +32,9 @@ impl Image {
         self.height
     }
 
-    pub fn get_pixel(&self, i: usize, j: usize) -> Vec3 {
+    pub fn pixel(&self, i: usize, j: usize) -> Vec3 {
         assert!(i < self.width && j < self.height);
-        self.image[i * self.height + j].clone()
+        self.image[i * self.height + j]
     }
 
     pub fn set_pixel(&mut self, i: usize, j: usize, val: Vec3) {
@@ -42,7 +42,7 @@ impl Image {
         self.image[i * self.height + j] = val;
     }
 
-    fn into_raw_bytes(&self, gamma: f64) -> Vec<u8> {
+    fn to_raw_bytes(&self, gamma: f64) -> Vec<u8> {
         let mut v = Vec::with_capacity(self.image.len() * 3);
         for val in self.image.iter() {
             let pixel = val.clip(0., 1.0).pow(gamma);
@@ -59,11 +59,11 @@ impl Image {
     pub fn save(&self, filename: &str, image_format: ImageFormat) -> Result<()> {
         let gamma = 1. / 2.2;
         let mut f = File::create(filename)?;
-        let raw_pixels = self.into_raw_bytes(gamma);
+        let raw_pixels = self.to_raw_bytes(gamma);
 
         match image_format {
             ImageFormat::PpmAscii => {
-                write!(f, "P3\n{} {}\n{}\n", self.width, self.height, 255)?;
+                write!(f, "P3\n{} {}\n255\n", self.width, self.height)?;
                 f.write_all(
                     raw_pixels
                         .into_iter()
@@ -74,7 +74,7 @@ impl Image {
                 )
             }
             ImageFormat::PpmBinary => {
-                write!(f, "P6\n{} {}\n{}\n", self.width, self.height, 255)?;
+                write!(f, "P6\n{} {}\n255\n", self.width, self.height)?;
                 f.write_all(&raw_pixels)
             }
         }

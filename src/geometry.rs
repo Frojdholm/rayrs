@@ -3,7 +3,7 @@ use super::Object;
 use super::Ray;
 
 use std::f64::consts::PI;
-use std::ops::{Mul, Range};
+use std::ops::Range;
 
 pub trait Hittable {
     fn intersect(&self, r: Ray) -> Option<f64>;
@@ -297,7 +297,7 @@ impl Hittable for Triangle {
     }
 
     fn normal(&self, _p: Vec3) -> Vec3 {
-        self.normal.clone()
+        self.normal
     }
 
     fn area(&self) -> f64 {
@@ -387,7 +387,7 @@ impl AxisAlignedBoundingBox {
     }
 
     fn from_object_list(objects: &[Object]) -> Option<Self> {
-        if objects.len() == 0 {
+        if objects.is_empty() {
             None
         } else {
             let mut bbox: AxisAlignedBoundingBox = (&objects[0]).into();
@@ -600,7 +600,7 @@ enum BvhTree {
 impl BvhTree {
     fn build_sah(objects: Vec<Object>) -> Self {
         // Having a BVH for 0 objects does not make sense
-        assert!(objects.len() > 0);
+        assert!(!objects.is_empty());
 
         let bbox = AxisAlignedBoundingBox::from_object_list(&objects).unwrap();
 
@@ -622,7 +622,7 @@ impl BvhTree {
             let mean_center: Vec3 = centers
                 .iter()
                 .fold(Vec3::new(0., 0., 0.), |acc, el| acc + *el)
-                .mul(1. / centers.len() as f64);
+                / centers.len() as f64;
 
             let mut data: Vec<(Vec3, Object)> = centers.into_iter().zip(objects).collect();
 
@@ -716,19 +716,13 @@ impl BvhTree {
         } else {
             // When we reach a small enough number of objects we can just add
             // them as leaf nodes.
-            BvhTree::Node(
-                bbox,
-                objects
-                    .into_iter()
-                    .map(|obj| BvhTree::LeafNode(obj))
-                    .collect(),
-            )
+            BvhTree::Node(bbox, objects.into_iter().map(BvhTree::LeafNode).collect())
         }
     }
 
     fn build_midpoint(objects: Vec<Object>) -> Self {
         // Having a BVH for 0 objects does not make sense
-        assert!(objects.len() > 0);
+        assert!(!objects.is_empty());
 
         let bbox = AxisAlignedBoundingBox::from_object_list(&objects).unwrap();
 
@@ -749,7 +743,7 @@ impl BvhTree {
             let mean_center: Vec3 = centers
                 .iter()
                 .fold(Vec3::new(0., 0., 0.), |acc, el| acc + *el)
-                .mul(1. / centers.len() as f64);
+                / centers.len() as f64;
 
             let mut data: Vec<(Vec3, Object)> = centers.into_iter().zip(objects).collect();
 
@@ -805,13 +799,7 @@ impl BvhTree {
         } else {
             // When we reach a small enough number of objects we can just add
             // them as leaf nodes.
-            BvhTree::Node(
-                bbox,
-                objects
-                    .into_iter()
-                    .map(|obj| BvhTree::LeafNode(obj))
-                    .collect(),
-            )
+            BvhTree::Node(bbox, objects.into_iter().map(BvhTree::LeafNode).collect())
         }
     }
 
@@ -830,8 +818,8 @@ impl BvhTree {
                         }
                     }
 
-                    if obj.is_some() {
-                        Some((t, obj.unwrap()))
+                    if let Some(obj) = obj {
+                        Some((t, obj))
                     } else {
                         None
                     }

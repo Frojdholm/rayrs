@@ -185,18 +185,11 @@ impl Brdf for Material {
                 let pdf1 = mat1.pdf();
                 let pdf2 = mat2.pdf();
 
-                if pdf1.is_some() && pdf2.is_some() {
-                    Some(Pdf::Mix(
-                        (*kind).clone(),
-                        Box::new(pdf1.unwrap()),
-                        Box::new(pdf2.unwrap()),
-                    ))
-                } else if pdf1.is_some() && pdf2.is_none() {
-                    Some(pdf1.unwrap())
-                } else if pdf1.is_none() && pdf2.is_some() {
-                    Some(pdf2.unwrap())
-                } else {
-                    None
+                match (pdf1, pdf2) {
+                    (Some(p1), Some(p2)) => Some(Pdf::Mix(*kind, Box::new(p1), Box::new(p2))),
+                    (Some(p1), None) => Some(p1),
+                    (None, Some(p2)) => Some(p2),
+                    (None, None) => None,
                 }
             }
             Material::NoReflect => None,
@@ -259,7 +252,7 @@ impl DiracBrdf for Material {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum MixKind {
     Constant(f64),
     Fresnel(f64),

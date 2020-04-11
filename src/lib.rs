@@ -11,7 +11,7 @@ use material::{Brdf, DiracBrdf, Emission, Emitting, Material, MixKind, Pdf};
 
 use rand::Rng;
 
-use std::ops::{Add, Mul, Range};
+use std::ops::Range;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Ray {
@@ -33,7 +33,7 @@ impl Ray {
     }
 
     fn translate(&self, v: Vec3) -> Ray {
-        Ray::new(self.origin + v, self.direction.clone())
+        Ray::new(self.origin + v, self.direction)
     }
 }
 
@@ -101,39 +101,39 @@ impl Camera {
         let x: f64 = (j + rand::random::<f64>()) / (self.ppc as f64) - self.width / 2.;
         let y: f64 = (i + rand::random::<f64>()) / (self.ppc as f64) - self.height / 2.;
 
-        Ray::new(self.origin.clone(), self.z + x * self.e_x + y * self.e_y)
+        Ray::new(self.origin, self.z + x * self.e_x + y * self.e_y)
     }
 }
 
-#[derive(Debug)]
-struct ListAccelerator {
-    objects: Vec<Object>,
-}
+// #[derive(Debug)]
+// struct ListAccelerator {
+//     objects: Vec<Object>,
+// }
 
-impl ListAccelerator {
-    fn new(objects: Vec<Object>) -> Self {
-        ListAccelerator { objects }
-    }
+// impl ListAccelerator {
+//     fn new(objects: Vec<Object>) -> Self {
+//         ListAccelerator { objects }
+//     }
 
-    fn intersect(&self, ray: Ray, tmin: f64, tmax: f64) -> Option<(f64, Object)> {
-        let mut t = tmax;
-        let mut obj = None;
-        for child in &self.objects {
-            if let Some(t_hit) = child.geom.intersect(ray) {
-                if t_hit > tmin && t_hit < t {
-                    t = t_hit;
-                    obj = Some((*child).clone());
-                }
-            }
-        }
+//     fn intersect(&self, ray: Ray, tmin: f64, tmax: f64) -> Option<(f64, Object)> {
+//         let mut t = tmax;
+//         let mut obj = None;
+//         for child in &self.objects {
+//             if let Some(t_hit) = child.geom.intersect(ray) {
+//                 if t_hit > tmin && t_hit < t {
+//                     t = t_hit;
+//                     obj = Some((*child).clone());
+//                 }
+//             }
+//         }
 
-        if obj.is_some() {
-            Some((t, obj.unwrap()))
-        } else {
-            None
-        }
-    }
-}
+//         if obj.is_some() {
+//             Some((t, obj.unwrap()))
+//         } else {
+//             None
+//         }
+//     }
+// }
 
 #[derive(Debug)]
 pub struct Scene {
@@ -167,13 +167,9 @@ impl Scene {
     pub fn fresnel_test(z_near: f64, z_far: f64) -> Self {
         let white = Material::Diffuse(1., Vec3::new(1., 1., 1.));
         let black = Material::Diffuse(1., Vec3::new(0., 0., 0.));
-        let mix = Material::Mix(
-            MixKind::Fresnel(1.5),
-            Box::new(black.clone()),
-            Box::new(white.clone()),
-        );
+        let mix = Material::Mix(MixKind::Fresnel(1.5), Box::new(black), Box::new(white));
 
-        let sphere = Object::sphere(1., Vec3::new(0., 0., 0.), mix.clone(), Emission::Dark);
+        let sphere = Object::sphere(1., Vec3::new(0., 0., 0.), mix, Emission::Dark);
 
         Scene::new(vec![sphere], z_near, z_far)
     }
@@ -235,30 +231,12 @@ impl Scene {
         let mirror = Material::Mirror(1., Vec3::new(1., 1., 1.));
         let mix = Material::Mix(
             MixKind::Fresnel(1.5),
-            Box::new(mirror.clone()),
+            Box::new(mirror),
             Box::new(white.clone()),
         );
 
-        let left = Object::plane(
-            Axis::X,
-            -2.5,
-            2.5,
-            -2.5,
-            2.5,
-            -2.5,
-            red.clone(),
-            Emission::Dark,
-        );
-        let right = Object::plane(
-            Axis::XRev,
-            -2.5,
-            2.5,
-            -2.5,
-            2.5,
-            2.5,
-            green.clone(),
-            Emission::Dark,
-        );
+        let left = Object::plane(Axis::X, -2.5, 2.5, -2.5, 2.5, -2.5, red, Emission::Dark);
+        let right = Object::plane(Axis::XRev, -2.5, 2.5, -2.5, 2.5, 2.5, green, Emission::Dark);
         let top = Object::plane(
             Axis::YRev,
             -2.5,
@@ -303,11 +281,11 @@ impl Scene {
             Vec3::new(-1., -1., 0.),
             Vec3::new(1., -1., 0.),
             Vec3::new(0., 1., 0.),
-            white.clone(),
+            white,
             Emission::Dark,
         );
         let sphere1 = Object::sphere(0.5, Vec3::new(-1., -2., 0.5), mix.clone(), Emission::Dark);
-        let sphere2 = Object::sphere(1., Vec3::new(0.5, -1.5, -1.3), mix.clone(), Emission::Dark);
+        let sphere2 = Object::sphere(1., Vec3::new(0.5, -1.5, -1.3), mix, Emission::Dark);
 
         let objects = vec![
             left, right, top, bottom, back, light, sphere1, sphere2, triangle1,
@@ -322,30 +300,12 @@ impl Scene {
         let mirror = Material::Mirror(1., Vec3::new(1., 1., 1.));
         let mix = Material::Mix(
             MixKind::Fresnel(1.5),
-            Box::new(mirror.clone()),
+            Box::new(mirror),
             Box::new(white.clone()),
         );
 
-        let left = Object::plane(
-            Axis::X,
-            -2.5,
-            2.5,
-            -2.5,
-            2.5,
-            -2.5,
-            red.clone(),
-            Emission::Dark,
-        );
-        let right = Object::plane(
-            Axis::XRev,
-            -2.5,
-            2.5,
-            -2.5,
-            2.5,
-            2.5,
-            green.clone(),
-            Emission::Dark,
-        );
+        let left = Object::plane(Axis::X, -2.5, 2.5, -2.5, 2.5, -2.5, red, Emission::Dark);
+        let right = Object::plane(Axis::XRev, -2.5, 2.5, -2.5, 2.5, 2.5, green, Emission::Dark);
         let top = Object::plane(
             Axis::YRev,
             -2.5,
@@ -366,16 +326,7 @@ impl Scene {
             white.clone(),
             Emission::Dark,
         );
-        let back = Object::plane(
-            Axis::Z,
-            -2.5,
-            2.5,
-            -2.5,
-            2.5,
-            -2.5,
-            white.clone(),
-            Emission::Dark,
-        );
+        let back = Object::plane(Axis::Z, -2.5, 2.5, -2.5, 2.5, -2.5, white, Emission::Dark);
         let light = Object::plane(
             Axis::YRev,
             -0.8,
@@ -388,7 +339,7 @@ impl Scene {
         );
 
         let dragon = wavefront_obj::load_obj_file("dragon.obj").unwrap();
-        let mut dragon = Object::from_triangles(dragon, white.clone(), Emission::Dark);
+        let mut dragon = Object::from_triangles(dragon, mix, Emission::Dark);
         let mut objects = vec![left, right, top, bottom, back, light];
         objects.append(&mut dragon);
         Scene::new(objects, z_near, z_far)
@@ -396,7 +347,7 @@ impl Scene {
 
     pub fn background(&self, dir: Vec3) -> Vec3 {
         let y = (dir.unit().y() + 1.) / 2.;
-        Vec3::new(0., 0., 1.).mul(y) + Vec3::new(1., 1., 1.).mul(1. - y)
+        Vec3::unit_z() * y + Vec3::ones() * (1. - y)
         //Vec3::new(0., 0., 0.)
     }
 }
@@ -543,8 +494,8 @@ impl Object {
                 lower_left.z(),
                 upper_right.z(),
                 lower_left.y(),
-                mat.clone(),
-                emission.clone(),
+                mat,
+                emission,
             ),
         ]
     }
@@ -558,7 +509,7 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32, rays: &mut f64) -> Vec3
         if let Some((t, obj)) = s.bvh.intersect(r, s.t_range.start, s.t_range.end) {
             let position = r.point(t);
             let normal = obj.geom.normal(position);
-            let incoming = r.direction.unit().mul(-1.);
+            let incoming = -1. * r.direction.unit();
 
             let (color, new_ray) = if obj.mat.is_dirac() {
                 // Materials that contain dirac deltas need to be handled
@@ -569,10 +520,10 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32, rays: &mut f64) -> Vec3
                     incoming,
                     Some(Pdf::Hittable(s.lights[0].clone())),
                 );
-                if new_ray.is_none() {
-                    return color;
+                if let Some(new_ray) = new_ray {
+                    (color, new_ray)
                 } else {
-                    (color, new_ray.unwrap())
+                    return color;
                 }
             } else if let Some(pdf) = obj.mat.pdf() {
                 // Otherwise if we can sample the material we will do it.
@@ -584,23 +535,22 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32, rays: &mut f64) -> Vec3
 
                 let outgoing = pdf.generate(position, normal, incoming);
                 (
-                    obj.mat
-                        .brdf(position, normal, incoming, outgoing)
-                        .mul(1. / pdf.value(position, normal, incoming, outgoing)),
+                    obj.mat.brdf(position, normal, incoming, outgoing)
+                        / pdf.value(position, normal, incoming, outgoing),
                     Ray::new(position, outgoing),
                 )
             } else {
                 // If we hit a non-reflecting object we can just return.
                 return throughput * obj.emission.emit();
             };
-            throughput = throughput.mul(color).add(obj.emission.emit());
+            throughput = throughput * color + obj.emission.emit();
 
             let p = throughput.x().max(throughput.y()).max(throughput.z());
             if rand::random::<f64>() > p {
                 return throughput;
             }
 
-            throughput = throughput.mul(1. / p);
+            throughput /= p;
             r = new_ray;
         } else {
             return throughput * s.background(r.direction);
