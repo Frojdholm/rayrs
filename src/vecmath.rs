@@ -1,4 +1,3 @@
-use std::iter::IntoIterator;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 #[derive(PartialEq, Debug, Copy, Clone)]
@@ -24,14 +23,13 @@ impl<T: Copy> Vector<T> {
     pub fn z(self) -> T {
         self.data[2]
     }
-}
 
-impl<'a, T> IntoIterator for &'a Vector<T> {
-    type Item = &'a T;
-    type IntoIter = std::slice::Iter<'a, T>;
-
-    fn into_iter(self) -> Self::IntoIter {
+    pub fn iter(&self) -> std::slice::Iter<T> {
         self.data.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<T> {
+        self.data.iter_mut()
     }
 }
 
