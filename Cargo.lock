@@ -24,6 +24,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dea0c0405123bba743ee3f91f49b1c7cfb684eef0da0a50110f758ccf24cdff0"
 
 [[package]]
+name = "ply"
+version = "0.1.0"
+
+[[package]]
 name = "ppv-lite86"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -72,6 +76,13 @@ dependencies = [
 
 [[package]]
 name = "rayrs"
+version = "0.1.0"
+dependencies = [
+ "rayrs-lib",
+]
+
+[[package]]
+name = "rayrs-lib"
 version = "0.1.0"
 dependencies = [
  "rand",

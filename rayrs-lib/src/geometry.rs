@@ -390,15 +390,14 @@ impl AxisAlignedBoundingBox {
         if objects.is_empty() {
             None
         } else {
-            let mut bbox: AxisAlignedBoundingBox = (&objects[0]).into();
-            for obj in objects.iter().skip(1) {
-                bbox = bbox.expand(&obj.into());
-            }
-            Some(bbox)
+            let init_bbox = AxisAlignedBoundingBox::from(&objects[0]);
+            Some(objects.iter().skip(1).fold(init_bbox, |bbox, el| {
+                bbox.expand(AxisAlignedBoundingBox::from(el))
+            }))
         }
     }
 
-    fn get_center(&self) -> Vec3 {
+    fn center(&self) -> Vec3 {
         let x = (self.x_range.end - self.x_range.start) / 2. + self.x_range.start;
         let y = (self.y_range.end - self.y_range.start) / 2. + self.y_range.start;
         let z = (self.z_range.end - self.z_range.start) / 2. + self.z_range.start;
@@ -418,7 +417,7 @@ impl AxisAlignedBoundingBox {
         2. * x * y + 2. * y * z + 2. * x * z
     }
 
-    fn expand(&self, other: &Self) -> Self {
+    fn expand(self, other: Self) -> Self {
         let xmin = self.x_range.start.min(other.x_range.start);
         let xmax = self.x_range.end.max(other.x_range.end);
         let ymin = self.y_range.start.min(other.y_range.start);
@@ -616,7 +615,7 @@ impl BvhTree {
 
             let centers: Vec<Vec3> = objects
                 .iter()
-                .map(|geom| AxisAlignedBoundingBox::from(geom).get_center())
+                .map(|geom| AxisAlignedBoundingBox::from(geom).center())
                 .collect();
 
             let mean_center: Vec3 = centers
@@ -737,7 +736,7 @@ impl BvhTree {
 
             let centers: Vec<Vec3> = objects
                 .iter()
-                .map(|geom| AxisAlignedBoundingBox::from(geom).get_center())
+                .map(|geom| AxisAlignedBoundingBox::from(geom).center())
                 .collect();
 
             let mean_center: Vec3 = centers
@@ -752,7 +751,7 @@ impl BvhTree {
             // in one side we split along object mean position instead.
             let ind = if x >= y && x >= z {
                 data.sort_by(|a, b| a.0.x().partial_cmp(&b.0.x()).unwrap());
-                let ind = get_split_ind(Axis::X, bbox.get_center().x(), &data);
+                let ind = get_split_ind(Axis::X, bbox.center().x(), &data);
                 if ind != 0 {
                     ind
                 } else {
@@ -760,7 +759,7 @@ impl BvhTree {
                 }
             } else if y >= z {
                 data.sort_by(|a, b| a.0.y().partial_cmp(&b.0.y()).unwrap());
-                let ind = get_split_ind(Axis::Y, bbox.get_center().y(), &data);
+                let ind = get_split_ind(Axis::Y, bbox.center().y(), &data);
                 if ind != 0 {
                     ind
                 } else {
@@ -768,7 +767,7 @@ impl BvhTree {
                 }
             } else {
                 data.sort_by(|a, b| a.0.z().partial_cmp(&b.0.z()).unwrap());
-                let ind = get_split_ind(Axis::Z, bbox.get_center().z(), &data);
+                let ind = get_split_ind(Axis::Z, bbox.center().z(), &data);
                 if ind != 0 {
                     ind
                 } else {

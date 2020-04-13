@@ -1,6 +1,6 @@
-use rayrs::image::{Image, ImageFormat};
-use rayrs::vecmath::Vec3;
-use rayrs::{Camera, Scene};
+use rayrs_lib::image::{Image, ImageFormat};
+use rayrs_lib::vecmath::Vec3;
+use rayrs_lib::{self, Camera, Scene};
 
 use std::io::Result;
 
@@ -29,7 +29,7 @@ fn main() -> Result<()> {
         for i in 0..image.get_height() {
             let mut pixel = Vec3::new(0., 0., 0.);
             for _ in 0..SPP {
-                pixel += rayrs::radiance(
+                pixel += rayrs_lib::radiance(
                     &s,
                     c.generate_primary_ray(image.get_height() - i, image.get_width() - j),
                     50,
