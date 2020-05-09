@@ -43,17 +43,18 @@ impl Image {
     }
 
     fn to_raw_bytes(&self, gamma: f64) -> Vec<u8> {
-        let mut v = Vec::with_capacity(self.image.len() * 3);
-        for val in self.image.iter() {
-            let pixel = val.clip(0., 1.0).pow(gamma);
+        self.image
+            .iter()
+            .fold(Vec::with_capacity(self.image.len() * 3), |mut acc, val| {
+                let pixel = val.clip(0., 1.).pow(gamma);
             let r = (255.99 * pixel.x()) as u8;
             let g = (255.99 * pixel.y()) as u8;
             let b = (255.99 * pixel.z()) as u8;
-            v.push(r);
-            v.push(g);
-            v.push(b);
-        }
-        v
+                acc.push(r);
+                acc.push(g);
+                acc.push(b);
+                acc
+            })
     }
 
     pub fn save(&self, filename: &str, image_format: ImageFormat) -> Result<()> {
