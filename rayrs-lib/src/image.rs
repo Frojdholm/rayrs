@@ -33,13 +33,13 @@ impl Image {
     }
 
     pub fn pixel(&self, i: usize, j: usize) -> Vec3 {
-        assert!(i < self.width && j < self.height);
-        self.image[i * self.height + j]
+        assert!(i < self.height && j < self.width);
+        self.image[i * self.width + j]
     }
 
     pub fn set_pixel(&mut self, i: usize, j: usize, val: Vec3) {
-        assert!(i < self.width && j < self.height);
-        self.image[i * self.height + j] = val;
+        assert!(i < self.height && j < self.width);
+        self.image[i * self.width + j] = val;
     }
 
     fn to_raw_bytes(&self, gamma: f64) -> Vec<u8> {
