@@ -1,19 +1,18 @@
-use super::geometry::Geometry;
 use super::geometry::Hittable;
 use super::vecmath::Vec3;
 use super::Ray;
 
 use std::f64::consts::PI;
 
-pub enum Pdf {
+pub enum Pdf<'a> {
     Cosine,
     Uniform,
     Dirac,
-    Hittable(Geometry),
-    Mix(MixKind, Box<Pdf>, Box<Pdf>),
+    Hittable(&'a dyn Hittable),
+    Mix(MixKind, Box<Pdf<'a>>, Box<Pdf<'a>>),
 }
 
-impl Pdf {
+impl<'a> Pdf<'a> {
     pub fn value(&self, position: Vec3, normal: Vec3, outgoing: Vec3, incoming: Vec3) -> f64 {
         match self {
             Pdf::Cosine => normal.dot(incoming.unit()) / PI,

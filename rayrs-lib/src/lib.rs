@@ -1,3 +1,4 @@
+mod bvh;
 pub mod geometry;
 pub mod image;
 pub mod material;
@@ -6,8 +7,10 @@ pub mod wavefront_obj;
 
 use vecmath::Vec3;
 
-use geometry::{Axis, Bvh, BvhHeuristic, Geometry, Hittable, Plane, Sphere, Triangle};
-use material::{Brdf, DiracBrdf, Emission, Emitting, Material, MixKind, Pdf};
+use geometry::{Axis, AxisAlignedBoundingBox, Hittable, Plane, Sphere, Triangle};
+use material::{Brdf, DiracBrdf, Emission, Emitting, Material, MixKind};
+
+use bvh::{Bvh, BvhHeuristic, RayIntersection};
 
 use rand::Rng;
 
@@ -28,13 +31,13 @@ impl Ray {
         self.origin + self.direction * t
     }
 
-    fn rotate(&self, rot: Vec3) -> Ray {
-        Ray::new(self.origin.rotate(rot), self.direction.rotate(rot))
-    }
+    // fn rotate(&self, rot: Vec3) -> Ray {
+    //     Ray::new(self.origin.rotate(rot), self.direction.rotate(rot))
+    // }
 
-    fn translate(&self, v: Vec3) -> Ray {
-        Ray::new(self.origin + v, self.direction)
-    }
+    // fn translate(&self, v: Vec3) -> Ray {
+    //     Ray::new(self.origin + v, self.direction)
+    // }
 }
 
 #[derive(Debug)]
@@ -135,28 +138,18 @@ impl Camera {
 //     }
 // }
 
-#[derive(Debug)]
 pub struct Scene {
     bvh: Bvh,
-    lights: Vec<Geometry>,
     t_range: Range<f64>,
 }
 
 impl Scene {
-    pub fn new(objects: Vec<Object>, z_near: f64, z_far: f64) -> Self {
+    pub fn new(objects: Vec<Object>, z_near: f64, z_far: f64, heuristic: BvhHeuristic) -> Self {
         assert!(z_near >= 0.);
         assert!(z_far > z_near);
 
-        let mut lights = Vec::new();
-        for obj in objects.iter() {
-            if let Emission::Emissive(_, _) = obj.emission {
-                lights.push(obj.geom.clone());
-            }
-        }
-
         Scene {
-            bvh: Bvh::build(BvhHeuristic::Sah, objects),
-            lights,
+            bvh: Bvh::build(heuristic, objects),
             t_range: Range {
                 start: z_near,
                 end: z_far,
@@ -171,7 +164,12 @@ impl Scene {
 
         let sphere = Object::sphere(1., Vec3::new(0., 0., 0.), mix, Emission::Dark);
 
-        Scene::new(vec![sphere], z_near, z_far)
+        Scene::new(
+            vec![sphere],
+            z_near,
+            z_far,
+            BvhHeuristic::Sah { splits: 1000 },
+        )
     }
 
     pub fn bvh_test(z_near: f64, z_far: f64) -> Self {
@@ -221,7 +219,7 @@ impl Scene {
         );
         objects.push(light);
 
-        Scene::new(objects, z_near, z_far)
+        Scene::new(objects, z_near, z_far, BvhHeuristic::Sah { splits: 1000 })
     }
 
     pub fn cornell_box(z_near: f64, z_far: f64) -> Self {
@@ -290,7 +288,7 @@ impl Scene {
         let objects = vec![
             left, right, top, bottom, back, light, sphere1, sphere2, triangle1,
         ];
-        Scene::new(objects, z_near, z_far)
+        Scene::new(objects, z_near, z_far, BvhHeuristic::Midpoint)
     }
 
     pub fn dragon(z_near: f64, z_far: f64) -> Self {
@@ -342,7 +340,7 @@ impl Scene {
         let mut dragon = Object::from_triangles(dragon, mix, Emission::Dark);
         let mut objects = vec![left, right, top, bottom, back, light];
         objects.append(&mut dragon);
-        Scene::new(objects, z_near, z_far)
+        Scene::new(objects, z_near, z_far, BvhHeuristic::Sah { splits: 1000 })
     }
 
     pub fn background(&self, dir: Vec3) -> Vec3 {
@@ -352,9 +350,8 @@ impl Scene {
     }
 }
 
-#[derive(Debug, Clone)]
 pub struct Object {
-    geom: Geometry,
+    geom: Box<dyn Hittable>,
     mat: Material,
     emission: Emission,
 }
@@ -362,7 +359,7 @@ pub struct Object {
 impl Object {
     pub fn sphere(radius: f64, origin: Vec3, mat: Material, emission: Emission) -> Object {
         Object {
-            geom: Geometry::Sphere(Sphere::new(radius, origin)),
+            geom: Box::new(Sphere::new(radius, origin)),
             mat,
             emission,
         }
@@ -379,7 +376,7 @@ impl Object {
         emission: Emission,
     ) -> Object {
         Object {
-            geom: Geometry::Plane(Plane::new(axis, umin, umax, vmin, vmax, pos)),
+            geom: Box::new(Plane::new(axis, umin, umax, vmin, vmax, pos)),
             mat,
             emission,
         }
@@ -387,7 +384,7 @@ impl Object {
 
     pub fn triangle(p1: Vec3, p2: Vec3, p3: Vec3, mat: Material, emission: Emission) -> Object {
         Object {
-            geom: Geometry::Triangle(Triangle::new(p1, p2, p3)),
+            geom: Box::new(Triangle::new(p1, p2, p3)),
             mat,
             emission,
         }
@@ -396,38 +393,11 @@ impl Object {
     pub fn from_triangles(tris: Vec<Triangle>, mat: Material, emission: Emission) -> Vec<Object> {
         tris.into_iter()
             .map(|item| Object {
-                geom: Geometry::Triangle(item),
+                geom: Box::new(item),
                 mat: mat.clone(),
                 emission: emission.clone(),
             })
             .collect()
-    }
-
-    pub fn rotated_translated_plane(
-        axis: Axis,
-        umin: f64,
-        umax: f64,
-        vmin: f64,
-        vmax: f64,
-        pos: f64,
-        mat: Material,
-        emission: Emission,
-        rot: Vec3,
-        v: Vec3,
-    ) -> Object {
-        Object {
-            geom: Geometry::Rotated(
-                rot,
-                Box::new(Geometry::Translated(
-                    v,
-                    Box::new(Geometry::Plane(Plane::new(
-                        axis, umin, umax, vmin, vmax, pos,
-                    ))),
-                )),
-            ),
-            mat,
-            emission,
-        }
     }
 
     pub fn box_geom(
@@ -499,6 +469,10 @@ impl Object {
             ),
         ]
     }
+
+    pub fn bbox(&self) -> AxisAlignedBoundingBox {
+        self.geom.bbox()
+    }
 }
 
 pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32, rays: &mut f64) -> Vec3 {
@@ -506,7 +480,8 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32, rays: &mut f64) -> Vec3
 
     for _ in 0..max_bounces {
         *rays += 1.;
-        if let Some((t, obj)) = s.bvh.intersect(r, s.t_range.start, s.t_range.end) {
+        if let RayIntersection::Hit { t, obj } = s.bvh.intersect(r, s.t_range.start, s.t_range.end)
+        {
             let position = r.point(t);
             let normal = obj.geom.normal(position);
             let incoming = -1. * r.direction.unit();
@@ -514,12 +489,7 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32, rays: &mut f64) -> Vec3
             let (color, new_ray) = if obj.mat.is_dirac() {
                 // Materials that contain dirac deltas need to be handled
                 // explicitly.
-                let (color, new_ray) = obj.mat.evaluate(
-                    position,
-                    normal,
-                    incoming,
-                    Some(Pdf::Hittable(s.lights[0].clone())),
-                );
+                let (color, new_ray) = obj.mat.evaluate(position, normal, incoming, None);
                 if let Some(new_ray) = new_ray {
                     (color, new_ray)
                 } else {
@@ -527,11 +497,11 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32, rays: &mut f64) -> Vec3
                 }
             } else if let Some(pdf) = obj.mat.pdf() {
                 // Otherwise if we can sample the material we will do it.
-                let pdf = Pdf::Mix(
-                    MixKind::Constant(0.8),
-                    Box::new(pdf),
-                    Box::new(Pdf::Hittable(s.lights[0].clone())),
-                );
+                // let pdf = Pdf::Mix(
+                //     MixKind::Constant(0.8),
+                //     Box::new(pdf),
+                //     Box::new(Pdf::Hittable(s.lights[0].clone())),
+                // );
 
                 let outgoing = pdf.generate(position, normal, incoming);
                 (
