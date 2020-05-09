@@ -351,7 +351,7 @@ impl Scene {
 }
 
 pub struct Object {
-    geom: Box<dyn Hittable>,
+    geom: Box<dyn Hittable + Sync>,
     mat: Material,
     emission: Emission,
 }
@@ -475,11 +475,10 @@ impl Object {
     }
 }
 
-pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32, rays: &mut f64) -> Vec3 {
+pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32) -> Vec3 {
     let mut throughput = Vec3::new(1., 1., 1.);
 
     for _ in 0..max_bounces {
-        *rays += 1.;
         if let RayIntersection::Hit { t, obj } = s.bvh.intersect(r, s.t_range.start, s.t_range.end)
         {
             let position = r.point(t);

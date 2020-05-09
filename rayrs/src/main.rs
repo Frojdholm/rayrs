@@ -1,10 +1,12 @@
-use rayrs_lib::image::{Image, ImageFormat};
+use rayrs_lib::image::{Image, ImageBlock, ImageFormat};
 use rayrs_lib::vecmath::Vec3;
 use rayrs_lib::{self, Camera, Scene};
 
 use std::io::Result;
 
 use std::time::Instant;
+
+use rayon::prelude::*;
 
 const SPP: u32 = 200;
 
@@ -20,31 +22,35 @@ fn main() -> Result<()> {
     );
 
     let s = Scene::dragon(0.000_001, 1_000_000.);
-
-    let mut image = Image::new(c.x_pixels(), c.y_pixels());
+    let width = c.x_pixels();
+    let height = c.y_pixels();
+    let (x_size, y_size, blocks) = Image::blocks(width, height, 64);
     let now = Instant::now();
-    for j in 0..image.get_width() {
-        let start = Instant::now();
-        let mut rays = 0.;
-        for i in 0..image.get_height() {
-            let mut pixel = Vec3::new(0., 0., 0.);
-            for _ in 0..SPP {
-                pixel += rayrs_lib::radiance(
-                    &s,
-                    c.generate_primary_ray(image.get_height() - i, image.get_width() - j),
-                    50,
-                    &mut rays,
-                );
+    let blocks: Vec<ImageBlock> = blocks
+        .into_par_iter()
+        .map(|mut image| {
+            for j in 0..image.width() {
+                for i in 0..image.height() {
+                    let mut pixel = Vec3::new(0., 0., 0.);
+                    for _ in 0..SPP {
+                        pixel += rayrs_lib::radiance(
+                            &s,
+                            c.generate_primary_ray(
+                                height - i - image.offset_y(),
+                                width - j - image.offset_x(),
+                            ),
+                            50,
+                        );
+                    }
+                    image.set_pixel(i, j, (1. / SPP as f64) * pixel);
+                }
             }
-            image.set_pixel(i, j, (1. / SPP as f64) * pixel);
-        }
-        print!(
-            "\r{:.3} Mrays/s         ",
-            rays / start.elapsed().as_secs_f64() * 1.0e-6
-        )
-    }
-    println!();
-    println!("Time take: {:.3} s", now.elapsed().as_secs_f64());
+            image
+        })
+        .collect();
+
+    let image = Image::from_blocks(&blocks, x_size, y_size, width, height);
+    println!("Time taken: {:.3} s", now.elapsed().as_secs_f64());
 
     image.save("test.ppm", ImageFormat::PpmBinary)
 }

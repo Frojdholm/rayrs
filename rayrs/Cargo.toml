@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 rayrs-lib = {path = "../rayrs-lib"}
+rayon = "1.3"
