@@ -319,8 +319,8 @@ impl Scene {
             Box::new(white.clone()),
         );
         let cook_torrance = Material::CookTorrance {
-            m: 0.1,
-            color: Vec3::new(0.8, 0.8, 0.8), //Vec3::new(0.722, 0.451, 0.2),
+            m: 0.01,
+            color: Vec3::new(0.722, 0.451, 0.2),
         };
 
         let bottom = Object::plane(
@@ -336,9 +336,12 @@ impl Scene {
 
         //let sphere1 = Object::sphere(0.5, Vec3::new(-1., -2., 0.5), mix.clone(), Emission::Dark);
         //let sphere2 = Object::sphere(1., Vec3::new(1., -1.5, -0.5), mix, Emission::Dark);
-        let sphere = Object::sphere(1., Vec3::new(0., 1., 0.), cook_torrance, Emission::Dark);
+        //let sphere = Object::sphere(1., Vec3::new(0., 1., 0.), cook_torrance, Emission::Dark);
+        let suzanne = wavefront_obj::load_obj_file("suzanne.obj").unwrap();
+        let suzanne = Object::from_triangles(suzanne, cook_torrance, Emission::Dark);
 
-        let objects = vec![bottom, sphere];
+        let mut objects = vec![bottom];
+        objects.extend(suzanne);
         Scene::new(objects, z_near, z_far, BvhHeuristic::Midpoint, hdri)
     }
 

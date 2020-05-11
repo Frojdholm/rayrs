@@ -4,3 +4,6 @@ members = [
     "rayrs-lib",
     "ply"
 ]
+
+[profile.release]
+lto = true

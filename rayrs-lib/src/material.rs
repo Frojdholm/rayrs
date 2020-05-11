@@ -34,7 +34,12 @@ impl<'a> Pdf<'a> {
                     return 0.;
                 }
                 (-tan_theta_h * tan_theta_h / (m * m)).exp()
-                    / (PI * m * m * normal.dot(halfway_vec).powi(4))
+                    / (4.
+                        * PI
+                        * m
+                        * m
+                        * normal.dot(halfway_vec).powi(4)
+                        * outgoing.dot(halfway_vec))
             }
             Pdf::Dirac => 0.,
             Pdf::Hittable(geom) => {
@@ -81,15 +86,18 @@ impl<'a> Pdf<'a> {
             }
             Pdf::Beckmann(m) => {
                 let (e1, e2) = Vec3::orthonormal_basis(normal);
+
                 let phi = 2. * PI * rand::random::<f64>();
+
                 let tan2theta = -m * m * (1. - rand::random::<f64>()).ln();
                 let costheta = 1.0 / (1.0 + tan2theta).sqrt();
-                let sintheta = (1.0 - costheta * costheta).max(0.0);
+                let sintheta = (1.0 - costheta * costheta).sqrt();
 
                 let x = phi.cos() * sintheta;
                 let y = phi.sin() * sintheta;
 
-                x * e1 + y * e2 + costheta * normal
+                let halfway_vec = x * e1 + y * e2 + costheta * normal;
+                2. * incoming.dot(halfway_vec) * halfway_vec - incoming
             }
             Pdf::Dirac => 2. * incoming.dot(normal) * normal - incoming,
             Pdf::Hittable(geom) => (geom.sample() - position).unit(),
@@ -167,6 +175,7 @@ pub enum Material {
     Diffuse(f64, Vec3),
     Mirror(f64, Vec3),
     CookTorrance { m: f64, color: Vec3 },
+    CookTorranceDielectric { ior: f64, m: f64, color: Vec3 },
     //GlossyDiffuse(f64, Vec3, Vec3),
     Mix(MixKind, Box<Material>, Box<Material>),
     NoReflect,
@@ -181,12 +190,9 @@ impl Brdf for Material {
                 let n_wi = normal.dot(outgoing);
                 let n_wo = normal.dot(incoming);
 
-                assert!(n_wi >= 0.0);
-                assert!(n_wo >= 0.0);
-
                 let halfway_vec = outgoing + incoming;
 
-                if n_wi == 0.0 || n_wo == 0.0 {
+                if n_wi <= 0.0 || n_wo <= 0.0 {
                     return Vec3::new(0., 0., 0.);
                 }
 
@@ -212,6 +218,39 @@ impl Brdf for Material {
                 let fresnel = Fresnel::SchlickMetallic(*color).value(halfway_vec, outgoing);
 
                 fresnel * beckmann * geometric_factor / (4.0 * n_wi * n_wo) * n_wi
+            }
+            Material::CookTorranceDielectric { ior, m, color } => {
+                let n_wi = normal.dot(outgoing);
+                let n_wo = normal.dot(incoming);
+
+                let halfway_vec = outgoing + incoming;
+
+                if n_wi <= 0.0 || n_wo <= 0.0 {
+                    return Vec3::new(0., 0., 0.);
+                }
+
+                if halfway_vec.x() == 0.0 && halfway_vec.y() == 0.0 && halfway_vec.z() == 0.0 {
+                    return Vec3::new(0., 0., 0.);
+                }
+
+                let halfway_vec = halfway_vec.unit();
+                let theta_h = normal.dot(halfway_vec).acos();
+
+                let tan_theta_h = theta_h.tan();
+
+                if tan_theta_h.is_infinite() {
+                    return Vec3::new(0., 0., 0.);
+                }
+                let beckmann = (-tan_theta_h * tan_theta_h / (m * m)).exp()
+                    / (PI * m * m * normal.dot(halfway_vec).powi(4));
+
+                let nh = normal.dot(halfway_vec);
+                let geometric_factor =
+                    (2.0 * nh * n_wi / theta_h).min((2.0 * nh * n_wo / theta_h).min(1.));
+
+                let fresnel = Fresnel::SchlickDielectric(*ior).value(halfway_vec, outgoing);
+
+                *color * fresnel * beckmann * geometric_factor / (4.0 * n_wi * n_wo) * n_wi
             }
             // Material::GlossyDiffuse(n, col_spec, col_diff) => {
             //     // TODO: Finish implementation
@@ -244,6 +283,11 @@ impl Brdf for Material {
             Material::Diffuse(_, _) => Some(Pdf::Cosine),
             Material::Mirror(_, _) => Some(Pdf::Dirac),
             Material::CookTorrance { m, color: _ } => Some(Pdf::Beckmann(*m)),
+            Material::CookTorranceDielectric {
+                ior: _,
+                m,
+                color: _,
+            } => Some(Pdf::Beckmann(*m)),
             Material::Mix(kind, mat1, mat2) => {
                 // TODO: Check the math here, maybe the pdf still needs to be
                 // multiplied with factor...
@@ -298,6 +342,27 @@ impl DiracBrdf for Material {
                 )
             }
             Material::CookTorrance { m: _, color: _ } => {
+                let pdf = match pdf {
+                    Some(pdf) => Pdf::Mix(
+                        MixKind::Constant(0.8),
+                        Box::new(self.pdf().unwrap()),
+                        Box::new(pdf),
+                    ),
+                    None => self.pdf().unwrap(),
+                };
+
+                let incoming = pdf.generate(position, normal, outgoing);
+
+                (
+                    self.brdf(position, normal, outgoing, incoming),
+                    Some(Ray::new(position, incoming)),
+                )
+            }
+            Material::CookTorranceDielectric {
+                ior: _,
+                m: _,
+                color: _,
+            } => {
                 let pdf = match pdf {
                     Some(pdf) => Pdf::Mix(
                         MixKind::Constant(0.8),

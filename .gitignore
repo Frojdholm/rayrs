@@ -1,6 +1,8 @@
 /target
 
 *.ppm
+*.png
+*.hdr
 *.ply
 *.obj
 *~
