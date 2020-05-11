@@ -10,10 +10,13 @@ use vecmath::Vec3;
 use geometry::{Axis, AxisAlignedBoundingBox, Hittable, Plane, Sphere, Triangle};
 use material::{Brdf, DiracBrdf, Emission, Emitting, Material, MixKind};
 
+use image::Image;
+
 use bvh::{Bvh, BvhHeuristic, RayIntersection};
 
 use rand::Rng;
 
+use std::f64::consts::PI;
 use std::ops::Range;
 
 #[derive(Debug, Copy, Clone)]
@@ -141,10 +144,17 @@ impl Camera {
 pub struct Scene {
     bvh: Bvh,
     t_range: Range<f64>,
+    hdri: Image,
 }
 
 impl Scene {
-    pub fn new(objects: Vec<Object>, z_near: f64, z_far: f64, heuristic: BvhHeuristic) -> Self {
+    pub fn new(
+        objects: Vec<Object>,
+        z_near: f64,
+        z_far: f64,
+        heuristic: BvhHeuristic,
+        hdri: Image,
+    ) -> Self {
         assert!(z_near >= 0.);
         assert!(z_far > z_near);
 
@@ -154,25 +164,27 @@ impl Scene {
                 start: z_near,
                 end: z_far,
             },
+            hdri,
         }
     }
 
-    pub fn fresnel_test(z_near: f64, z_far: f64) -> Self {
+    pub fn fresnel_test(z_near: f64, z_far: f64, hdri: Image) -> Self {
         let white = Material::Diffuse(1., Vec3::new(1., 1., 1.));
         let black = Material::Diffuse(1., Vec3::new(0., 0., 0.));
         let mix = Material::Mix(MixKind::Fresnel(1.5), Box::new(black), Box::new(white));
 
-        let sphere = Object::sphere(1., Vec3::new(0., 0., 0.), mix, Emission::Dark);
+        let sphere = Object::sphere(0.1, Vec3::new(0., 0., 0.), mix, Emission::Dark);
 
         Scene::new(
             vec![sphere],
             z_near,
             z_far,
             BvhHeuristic::Sah { splits: 1000 },
+            hdri,
         )
     }
 
-    pub fn bvh_test(z_near: f64, z_far: f64) -> Self {
+    pub fn bvh_test(z_near: f64, z_far: f64, hdri: Image) -> Self {
         let max_spheres = 500;
         let mut rng = rand::thread_rng();
 
@@ -219,10 +231,16 @@ impl Scene {
         );
         objects.push(light);
 
-        Scene::new(objects, z_near, z_far, BvhHeuristic::Sah { splits: 1000 })
+        Scene::new(
+            objects,
+            z_near,
+            z_far,
+            BvhHeuristic::Sah { splits: 1000 },
+            hdri,
+        )
     }
 
-    pub fn cornell_box(z_near: f64, z_far: f64) -> Self {
+    pub fn cornell_box(z_near: f64, z_far: f64, hdri: Image) -> Self {
         let green = Material::Diffuse(1., Vec3::new(0., 1., 0.));
         let red = Material::Diffuse(1., Vec3::new(1., 0., 0.));
         let white = Material::Diffuse(1., Vec3::new(1., 1., 1.));
@@ -289,10 +307,42 @@ impl Scene {
         );
 
         let objects = vec![left, right, top, bottom, back, light, sphere1, sphere2];
-        Scene::new(objects, z_near, z_far, BvhHeuristic::Midpoint)
+        Scene::new(objects, z_near, z_far, BvhHeuristic::Midpoint, hdri)
     }
 
-    pub fn dragon(z_near: f64, z_far: f64) -> Self {
+    pub fn cook_torrance_test(z_near: f64, z_far: f64, hdri: Image) -> Self {
+        let white = Material::Diffuse(1., Vec3::new(1., 1., 1.));
+        let mirror = Material::Mirror(1., Vec3::new(1., 1., 1.));
+        let mix = Material::Mix(
+            MixKind::Fresnel(1.5),
+            Box::new(mirror.clone()),
+            Box::new(white.clone()),
+        );
+        let cook_torrance = Material::CookTorrance {
+            m: 0.1,
+            color: Vec3::new(0.8, 0.8, 0.8), //Vec3::new(0.722, 0.451, 0.2),
+        };
+
+        let bottom = Object::plane(
+            Axis::Y,
+            -3.5,
+            3.5,
+            -3.5,
+            3.5,
+            0.,
+            white.clone(),
+            Emission::Dark,
+        );
+
+        //let sphere1 = Object::sphere(0.5, Vec3::new(-1., -2., 0.5), mix.clone(), Emission::Dark);
+        //let sphere2 = Object::sphere(1., Vec3::new(1., -1.5, -0.5), mix, Emission::Dark);
+        let sphere = Object::sphere(1., Vec3::new(0., 1., 0.), cook_torrance, Emission::Dark);
+
+        let objects = vec![bottom, sphere];
+        Scene::new(objects, z_near, z_far, BvhHeuristic::Midpoint, hdri)
+    }
+
+    pub fn dragon(z_near: f64, z_far: f64, hdri: Image) -> Self {
         let green = Material::Diffuse(1., Vec3::new(0., 1., 0.));
         let red = Material::Diffuse(1., Vec3::new(1., 0., 0.));
         let white = Material::Diffuse(1., Vec3::new(1., 1., 1.));
@@ -341,13 +391,24 @@ impl Scene {
         let mut dragon = Object::from_triangles(dragon, mix, Emission::Dark);
         let mut objects = vec![left, right, top, bottom, back, light];
         objects.append(&mut dragon);
-        Scene::new(objects, z_near, z_far, BvhHeuristic::Sah { splits: 1000 })
+        Scene::new(
+            objects,
+            z_near,
+            z_far,
+            BvhHeuristic::Sah { splits: 1000 },
+            hdri,
+        )
     }
 
     pub fn background(&self, dir: Vec3) -> Vec3 {
-        let y = (dir.unit().y() + 1.) / 2.;
-        Vec3::unit_z() * y + Vec3::ones() * (1. - y)
-        //Vec3::new(0., 0., 0.)
+        let dir = dir.unit();
+
+        let phi = dir.z().atan2(dir.x()) + PI;
+        let theta = dir.y().acos();
+
+        let x = phi / (2. * PI) * self.hdri.width() as f64;
+        let y = theta / PI * self.hdri.height() as f64;
+        self.hdri.pixel(y.floor() as usize, x.floor() as usize)
     }
 }
 

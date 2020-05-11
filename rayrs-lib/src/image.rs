@@ -143,7 +143,7 @@ impl Image {
         for block in blocks {
             for i in 0..block.height() {
                 for j in 0..block.width() {
-                    pixels[(i + block.offset_y) * pix_height + j + block.offset_x] =
+                    pixels[(i + block.offset_y) * pix_width + j + block.offset_x] =
                         block.pixel(i, j);
                 }
             }
@@ -152,6 +152,14 @@ impl Image {
         Image {
             width: pix_width,
             height: pix_height,
+            image: pixels,
+        }
+    }
+
+    pub fn from_pixels(width: usize, height: usize, pixels: Vec<Vec3>) -> Image {
+        Image {
+            width,
+            height,
             image: pixels,
         }
     }
@@ -174,7 +182,7 @@ impl Image {
         self.image[i * self.width + j] = val;
     }
 
-    fn to_raw_bytes(&self, gamma: f64) -> Vec<u8> {
+    pub fn to_raw_bytes(&self, gamma: f64) -> Vec<u8> {
         self.image
             .iter()
             .fold(Vec::with_capacity(self.image.len() * 3), |mut acc, val| {
