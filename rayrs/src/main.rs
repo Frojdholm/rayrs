@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use rayon::prelude::*;
 
-const SPP: u32 = 200;
+const SPP: u32 = 100;
 
 fn main() -> Result<()> {
     let c = Camera::new(
@@ -18,10 +18,10 @@ fn main() -> Result<()> {
         90.,
         2.,
         2.,
-        50,
+        150,
     );
 
-    let s = Scene::dragon(0.000_001, 1_000_000.);
+    let s = Scene::cornell_box(0.000_001, 1_000_000.);
     let width = c.x_pixels();
     let height = c.y_pixels();
     let (x_size, y_size, blocks) = Image::blocks(width, height, 64);

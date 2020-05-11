@@ -232,6 +232,10 @@ impl Scene {
             Box::new(mirror),
             Box::new(white.clone()),
         );
+        let cook_torrance = Material::CookTorrance {
+            m: 0.5,
+            color: Vec3::new(0.8, 0.8, 0.8), //Vec3::new(0.722, 0.451, 0.2),
+        };
 
         let left = Object::plane(Axis::X, -2.5, 2.5, -2.5, 2.5, -2.5, red, Emission::Dark);
         let right = Object::plane(Axis::XRev, -2.5, 2.5, -2.5, 2.5, 2.5, green, Emission::Dark);
@@ -275,19 +279,16 @@ impl Scene {
             Material::NoReflect,
             Emission::Emissive(5., Vec3::new(1., 1., 1.)),
         );
-        let triangle1 = Object::triangle(
-            Vec3::new(-1., -1., 0.),
-            Vec3::new(1., -1., 0.),
-            Vec3::new(0., 1., 0.),
-            white,
+
+        let sphere1 = Object::sphere(0.5, Vec3::new(-1., -2., 0.5), mix, Emission::Dark);
+        let sphere2 = Object::sphere(
+            1.,
+            Vec3::new(0.5, -1.5, -1.3),
+            cook_torrance,
             Emission::Dark,
         );
-        let sphere1 = Object::sphere(0.5, Vec3::new(-1., -2., 0.5), mix.clone(), Emission::Dark);
-        let sphere2 = Object::sphere(1., Vec3::new(0.5, -1.5, -1.3), mix, Emission::Dark);
 
-        let objects = vec![
-            left, right, top, bottom, back, light, sphere1, sphere2, triangle1,
-        ];
+        let objects = vec![left, right, top, bottom, back, light, sphere1, sphere2];
         Scene::new(objects, z_near, z_far, BvhHeuristic::Midpoint)
     }
 

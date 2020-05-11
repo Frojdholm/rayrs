@@ -7,6 +7,7 @@ use std::f64::consts::PI;
 pub enum Pdf<'a> {
     Cosine,
     Uniform,
+    Beckmann(f64),
     Dirac,
     Hittable(&'a dyn Hittable),
     Mix(MixKind, Box<Pdf<'a>>, Box<Pdf<'a>>),
@@ -17,6 +18,24 @@ impl<'a> Pdf<'a> {
         match self {
             Pdf::Cosine => normal.dot(incoming.unit()) / PI,
             Pdf::Uniform => 0.5 * PI,
+            Pdf::Beckmann(m) => {
+                let halfway_vec = outgoing + incoming;
+
+                if halfway_vec.x() == 0.0 && halfway_vec.y() == 0.0 && halfway_vec.z() == 0.0 {
+                    return 0.;
+                }
+
+                let halfway_vec = halfway_vec.unit();
+                let theta_h = normal.dot(halfway_vec).acos();
+
+                let tan_theta_h = theta_h.tan();
+
+                if tan_theta_h.is_infinite() {
+                    return 0.;
+                }
+                (-tan_theta_h * tan_theta_h / (m * m)).exp()
+                    / (PI * m * m * normal.dot(halfway_vec).powi(4))
+            }
             Pdf::Dirac => 0.,
             Pdf::Hittable(geom) => {
                 let ray = Ray::new(position, incoming);
@@ -34,7 +53,7 @@ impl<'a> Pdf<'a> {
         }
     }
 
-    pub fn generate(&self, position: Vec3, normal: Vec3, outgoing: Vec3) -> Vec3 {
+    pub fn generate(&self, position: Vec3, normal: Vec3, incoming: Vec3) -> Vec3 {
         match self {
             Pdf::Cosine => {
                 let (e1, e2) = Vec3::orthonormal_basis(normal);
@@ -60,13 +79,25 @@ impl<'a> Pdf<'a> {
 
                 x * e1 + y * e2 + z * normal
             }
-            Pdf::Dirac => 2. * outgoing.dot(normal) * normal - outgoing,
+            Pdf::Beckmann(m) => {
+                let (e1, e2) = Vec3::orthonormal_basis(normal);
+                let phi = 2. * PI * rand::random::<f64>();
+                let tan2theta = -m * m * (1. - rand::random::<f64>()).ln();
+                let costheta = 1.0 / (1.0 + tan2theta).sqrt();
+                let sintheta = (1.0 - costheta * costheta).max(0.0);
+
+                let x = phi.cos() * sintheta;
+                let y = phi.sin() * sintheta;
+
+                x * e1 + y * e2 + costheta * normal
+            }
+            Pdf::Dirac => 2. * incoming.dot(normal) * normal - incoming,
             Pdf::Hittable(geom) => (geom.sample() - position).unit(),
             Pdf::Mix(kind, pdf1, pdf2) => {
-                if rand::random::<f64>() < kind.value(position, normal, outgoing) {
-                    pdf1.generate(position, normal, outgoing)
+                if rand::random::<f64>() < kind.value(position, normal, incoming) {
+                    pdf1.generate(position, normal, incoming)
                 } else {
-                    pdf2.generate(position, normal, outgoing)
+                    pdf2.generate(position, normal, incoming)
                 }
             }
         }
@@ -95,12 +126,9 @@ impl Emission {
     pub fn new(strength: f64, color: Vec3) -> Emission {
         assert!(strength >= 0.);
         assert!(
-            color.x() >= 0.
-                && color.x() <= 1.
-                && color.y() >= 0.
-                && color.y() <= 1.
-                && color.z() >= 0.
-                && color.z() <= 1.,
+            (0.0..1.0).contains(&color.x())
+                && (0.0..1.0).contains(&color.y())
+                && (0.0..1.0).contains(&color.z()),
             "RGB values need to be between 0 and 1"
         );
         Emission::Emissive(strength, color)
@@ -138,6 +166,7 @@ pub trait DiracBrdf {
 pub enum Material {
     Diffuse(f64, Vec3),
     Mirror(f64, Vec3),
+    CookTorrance { m: f64, color: Vec3 },
     //GlossyDiffuse(f64, Vec3, Vec3),
     Mix(MixKind, Box<Material>, Box<Material>),
     NoReflect,
@@ -146,8 +175,44 @@ pub enum Material {
 impl Brdf for Material {
     fn brdf(&self, position: Vec3, normal: Vec3, outgoing: Vec3, incoming: Vec3) -> Vec3 {
         match self {
-            Material::Diffuse(albedo, color) => *albedo / PI * normal.dot(incoming) * *color,
+            Material::Diffuse(albedo, color) => *albedo / PI * normal.dot(incoming).abs() * *color,
             Material::Mirror(_, _) => Vec3::new(0., 0., 0.),
+            Material::CookTorrance { m, color } => {
+                let n_wi = normal.dot(outgoing);
+                let n_wo = normal.dot(incoming);
+
+                assert!(n_wi >= 0.0);
+                assert!(n_wo >= 0.0);
+
+                let halfway_vec = outgoing + incoming;
+
+                if n_wi == 0.0 || n_wo == 0.0 {
+                    return Vec3::new(0., 0., 0.);
+                }
+
+                if halfway_vec.x() == 0.0 && halfway_vec.y() == 0.0 && halfway_vec.z() == 0.0 {
+                    return Vec3::new(0., 0., 0.);
+                }
+
+                let halfway_vec = halfway_vec.unit();
+                let theta_h = normal.dot(halfway_vec).acos();
+
+                let tan_theta_h = theta_h.tan();
+
+                if tan_theta_h.is_infinite() {
+                    return Vec3::new(0., 0., 0.);
+                }
+                let beckmann = (-tan_theta_h * tan_theta_h / (m * m)).exp()
+                    / (PI * m * m * normal.dot(halfway_vec).powi(4));
+
+                let nh = normal.dot(halfway_vec);
+                let geometric_factor =
+                    (2.0 * nh * n_wi / theta_h).min((2.0 * nh * n_wo / theta_h).min(1.));
+
+                let fresnel = Fresnel::SchlickMetallic(*color).value(halfway_vec, outgoing);
+
+                fresnel * beckmann * geometric_factor / (4.0 * n_wi * n_wo) * n_wi
+            }
             // Material::GlossyDiffuse(n, col_spec, col_diff) => {
             //     // TODO: Finish implementation
             //     let n_wi = normal.dot(outgoing);
@@ -157,11 +222,11 @@ impl Brdf for Material {
 
             //     let r0 = (1. - *n) / (1. + *n);
             //     let r0 = r0 * r0;
-            //     let fresnel = r0 + (1. - r0) * n_wi.powf(5.);
+            //     let fresnel = r0 + (1. - r0) * n_wi.powi(5);
             //     let brdf_diff = ((28. / (23. * PI)) * col_diff)
             //         .mul(&(Vec3::new(1., 1., 1.) - col_spec))
-            //         .mul(1. - (1. - n_wi / 2.).powf(5.))
-            //         .mul(1. - (1. - n_wo / 2.).powf(5.));
+            //         .mul(1. - (1. - n_wi / 2.).powi(5))
+            //         .mul(1. - (1. - n_wo / 2.).powi(5));
 
             //     Vec3::new(0., 0., 0.)
             // }
@@ -178,6 +243,7 @@ impl Brdf for Material {
         match self {
             Material::Diffuse(_, _) => Some(Pdf::Cosine),
             Material::Mirror(_, _) => Some(Pdf::Dirac),
+            Material::CookTorrance { m, color: _ } => Some(Pdf::Beckmann(*m)),
             Material::Mix(kind, mat1, mat2) => {
                 // TODO: Check the math here, maybe the pdf still needs to be
                 // multiplied with factor...
@@ -231,6 +297,23 @@ impl DiracBrdf for Material {
                     Some(Ray::new(position, incoming)),
                 )
             }
+            Material::CookTorrance { m: _, color: _ } => {
+                let pdf = match pdf {
+                    Some(pdf) => Pdf::Mix(
+                        MixKind::Constant(0.8),
+                        Box::new(self.pdf().unwrap()),
+                        Box::new(pdf),
+                    ),
+                    None => self.pdf().unwrap(),
+                };
+
+                let incoming = pdf.generate(position, normal, outgoing);
+
+                (
+                    self.brdf(position, normal, outgoing, incoming),
+                    Some(Ray::new(position, incoming)),
+                )
+            }
             Material::Mirror(attenuation, color) => {
                 // Evaluating a mirror directly will yield a single direction
                 // for every input direction. The BRDF contains a dirac delta
@@ -251,6 +334,32 @@ impl DiracBrdf for Material {
     }
 }
 
+fn schlick_dielectric(r0: f64, normal: Vec3, outgoing: Vec3) -> f64 {
+    r0 + (1. - r0) * (1. - normal.dot(outgoing)).powi(5)
+}
+
+fn schlick_metallic(r0: Vec3, normal: Vec3, outgoing: Vec3) -> Vec3 {
+    r0 + (Vec3::new(1., 1., 1.) - r0) * (1. - normal.dot(outgoing)).powi(5)
+}
+
+enum Fresnel {
+    SchlickDielectric(f64),
+    SchlickMetallic(Vec3),
+}
+
+impl Fresnel {
+    fn value(&self, normal: Vec3, outgoing: Vec3) -> Vec3 {
+        match self {
+            Fresnel::SchlickDielectric(ior) => {
+                let r0 = (1. - ior) / (1. + ior);
+                let r0 = r0 * r0;
+                let fresnel = schlick_dielectric(r0, normal, outgoing);
+                Vec3::new(fresnel, fresnel, fresnel)
+            }
+            Fresnel::SchlickMetallic(r0) => schlick_metallic(*r0, normal, outgoing),
+        }
+    }
+}
 #[derive(Debug, Copy, Clone)]
 pub enum MixKind {
     Constant(f64),
@@ -262,10 +371,10 @@ impl MixKind {
         match self {
             MixKind::Constant(factor) => *factor,
             MixKind::Fresnel(ior) => {
-                let r0 = (1. - ior) / (1. + ior);
+                let r0 = (ior - 1.) / (ior + 1.);
                 let r0 = r0 * r0;
 
-                r0 + (1. - r0) * (1. - normal.dot(outgoing)).powf(5.)
+                r0 + (1. - r0) * (1. - normal.dot(outgoing)).powi(5)
             }
         }
     }
