@@ -91,7 +91,7 @@ impl Vector<f64> {
         (e1, e2)
     }
 
-    pub fn pow(self, n: f64) -> Vector<f64> {
+    pub fn powf(self, n: f64) -> Vector<f64> {
         Vector {
             data: [
                 self.data[0].powf(n),
@@ -358,7 +358,7 @@ mod tests {
 
     #[test]
     fn test_pow() {
-        let v = Vec3::new(1., 2., 3.).pow(2.);
+        let v = Vec3::new(1., 2., 3.).powf(2.);
         assert_eq!(Vec3::new(1., 4., 9.), v);
     }
 

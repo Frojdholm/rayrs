@@ -178,7 +178,7 @@ impl Image {
         self.image
             .iter()
             .fold(Vec::with_capacity(self.image.len() * 3), |mut acc, val| {
-                let pixel = val.clip(0., 1.).pow(gamma);
+                let pixel = val.clip(0., 1.).powf(gamma);
                 let r = (255.99 * pixel.x()) as u8;
                 let g = (255.99 * pixel.y()) as u8;
                 let b = (255.99 * pixel.z()) as u8;
