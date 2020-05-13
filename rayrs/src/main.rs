@@ -31,8 +31,8 @@ fn main() -> Result<(), ImageError> {
 
     let c = Camera::new(
         Vec3::new(10., 10., 10.),
-        Vec3::new(0., 1., 0.),
-        Vec3::new(0., 1., 0.),
+        Vec3::unit_y(),
+        Vec3::unit_y(),
         20.,
         1920. / 1000.,
         1080. / 1000.,

@@ -4,11 +4,16 @@ use super::Ray;
 
 use std::f64::consts::PI;
 
+pub enum DiracType {
+    Reflect,
+    Refract(f64),
+}
+
 pub enum Pdf<'a> {
     Cosine,
     Uniform,
     Beckmann(f64),
-    Dirac,
+    Dirac(DiracType),
     Hittable(&'a dyn Hittable),
     Mix(MixKind, Box<Pdf<'a>>, Box<Pdf<'a>>),
 }
@@ -41,7 +46,7 @@ impl<'a> Pdf<'a> {
                         * normal.dot(halfway_vec).powi(4)
                         * outgoing.dot(halfway_vec))
             }
-            Pdf::Dirac => 0.,
+            Pdf::Dirac(_) => 0.,
             Pdf::Hittable(geom) => {
                 let ray = Ray::new(position, incoming);
                 if let Some(t) = geom.intersect(ray) {
@@ -99,7 +104,29 @@ impl<'a> Pdf<'a> {
                 let halfway_vec = x * e1 + y * e2 + costheta * normal;
                 2. * incoming.dot(halfway_vec) * halfway_vec - incoming
             }
-            Pdf::Dirac => 2. * incoming.dot(normal) * normal - incoming,
+            Pdf::Dirac(typ) => match typ {
+                DiracType::Reflect => 2. * incoming.dot(normal) * normal - incoming,
+                DiracType::Refract(ior) => {
+                    let cos_theta = incoming.dot(normal);
+
+                    let (ior_ratio, cos_theta, normal) = if cos_theta > 0. {
+                        (1. / ior, cos_theta, normal)
+                    } else {
+                        (*ior, -cos_theta, -1. * normal)
+                    };
+
+                    let sin_theta = (1. - cos_theta * cos_theta).sqrt();
+
+                    // Total internal reflection
+                    if ior_ratio * sin_theta > 1. {
+                        return 2. * cos_theta * normal - incoming;
+                    }
+
+                    let dir_parallel = ior_ratio * (cos_theta * normal - incoming);
+                    let dir_perp = -(1. - dir_parallel.mag_2()).sqrt() * normal;
+                    dir_perp + dir_parallel
+                }
+            },
             Pdf::Hittable(geom) => (geom.sample() - position).unit(),
             Pdf::Mix(kind, pdf1, pdf2) => {
                 if rand::random::<f64>() < kind.value(position, normal, incoming) {
@@ -113,7 +140,7 @@ impl<'a> Pdf<'a> {
 
     pub fn is_dirac(&self) -> bool {
         match self {
-            Pdf::Dirac => true,
+            Pdf::Dirac(_) => true,
             Pdf::Mix(_, mat1, mat2) => mat1.is_dirac() || mat2.is_dirac(),
             _ => false,
         }
@@ -171,11 +198,41 @@ pub trait DiracBrdf {
 }
 
 #[derive(Debug, Clone)]
+pub struct Glass {
+    ior: f64,
+    attenuation: f64,
+    color: Vec3,
+}
+
+impl Glass {
+    pub fn new(ior: f64, attenuation: f64, color: Vec3) -> Glass {
+        Glass {
+            ior,
+            attenuation,
+            color,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Material {
     Diffuse(f64, Vec3),
     Mirror(f64, Vec3),
-    CookTorrance { m: f64, color: Vec3 },
-    CookTorranceDielectric { ior: f64, m: f64, color: Vec3 },
+    Glass(Glass),
+    Refract {
+        attenuation: f64,
+        ior: f64,
+        color: Vec3,
+    },
+    CookTorrance {
+        m: f64,
+        color: Vec3,
+    },
+    CookTorranceDielectric {
+        ior: f64,
+        m: f64,
+        color: Vec3,
+    },
     //GlossyDiffuse(f64, Vec3, Vec3),
     Mix(MixKind, Box<Material>, Box<Material>),
     NoReflect,
@@ -185,7 +242,13 @@ impl Brdf for Material {
     fn brdf(&self, position: Vec3, normal: Vec3, outgoing: Vec3, incoming: Vec3) -> Vec3 {
         match self {
             Material::Diffuse(albedo, color) => *albedo / PI * normal.dot(incoming).abs() * *color,
-            Material::Mirror(_, _) => Vec3::new(0., 0., 0.),
+            Material::Mirror(_, _) => Vec3::zeros(),
+            Material::Refract {
+                attenuation: _,
+                ior: _,
+                color: _,
+            } => Vec3::zeros(),
+            Material::Glass(_) => Vec3::zeros(),
             Material::CookTorrance { m, color } => {
                 let n_wi = normal.dot(outgoing);
                 let n_wo = normal.dot(incoming);
@@ -193,11 +256,11 @@ impl Brdf for Material {
                 let halfway_vec = outgoing + incoming;
 
                 if n_wi <= 0.0 || n_wo <= 0.0 {
-                    return Vec3::new(0., 0., 0.);
+                    return Vec3::zeros();
                 }
 
                 if halfway_vec.x() == 0.0 && halfway_vec.y() == 0.0 && halfway_vec.z() == 0.0 {
-                    return Vec3::new(0., 0., 0.);
+                    return Vec3::zeros();
                 }
 
                 let halfway_vec = halfway_vec.unit();
@@ -206,7 +269,7 @@ impl Brdf for Material {
                 let tan_theta_h = theta_h.tan();
 
                 if tan_theta_h.is_infinite() {
-                    return Vec3::new(0., 0., 0.);
+                    return Vec3::zeros();
                 }
                 let beckmann = (-tan_theta_h * tan_theta_h / (m * m)).exp()
                     / (PI * m * m * normal.dot(halfway_vec).powi(4));
@@ -226,11 +289,11 @@ impl Brdf for Material {
                 let halfway_vec = outgoing + incoming;
 
                 if n_wi <= 0.0 || n_wo <= 0.0 {
-                    return Vec3::new(0., 0., 0.);
+                    return Vec3::zeros();
                 }
 
                 if halfway_vec.x() == 0.0 && halfway_vec.y() == 0.0 && halfway_vec.z() == 0.0 {
-                    return Vec3::new(0., 0., 0.);
+                    return Vec3::zeros();
                 }
 
                 let halfway_vec = halfway_vec.unit();
@@ -239,49 +302,43 @@ impl Brdf for Material {
                 let tan_theta_h = theta_h.tan();
 
                 if tan_theta_h.is_infinite() {
-                    return Vec3::new(0., 0., 0.);
+                    return Vec3::zeros();
                 }
                 let beckmann = (-tan_theta_h * tan_theta_h / (m * m)).exp()
                     / (PI * m * m * normal.dot(halfway_vec).powi(4));
 
                 let nh = normal.dot(halfway_vec);
+                let h_wi = halfway_vec.dot(incoming);
                 let geometric_factor =
-                    (2.0 * nh * n_wi / theta_h).min((2.0 * nh * n_wo / theta_h).min(1.));
+                    (2.0 * nh * n_wi / h_wi).min((2.0 * nh * n_wo / h_wi).min(1.));
 
-                let fresnel = Fresnel::SchlickDielectric(*ior).value(halfway_vec, outgoing);
+                let fresnel = Fresnel::SchlickDielectric {
+                    ior_in: 1.0,
+                    ior_out: *ior,
+                }
+                .value(halfway_vec, outgoing);
 
                 *color * fresnel * beckmann * geometric_factor / (4.0 * n_wi * n_wo) * n_wi
             }
-            // Material::GlossyDiffuse(n, col_spec, col_diff) => {
-            //     // TODO: Finish implementation
-            //     let n_wi = normal.dot(outgoing);
-            //     let n_wo = normal.dot(incoming);
-
-            //     let omega_h = incoming + outgoing;
-
-            //     let r0 = (1. - *n) / (1. + *n);
-            //     let r0 = r0 * r0;
-            //     let fresnel = r0 + (1. - r0) * n_wi.powi(5);
-            //     let brdf_diff = ((28. / (23. * PI)) * col_diff)
-            //         .mul(&(Vec3::new(1., 1., 1.) - col_spec))
-            //         .mul(1. - (1. - n_wi / 2.).powi(5))
-            //         .mul(1. - (1. - n_wo / 2.).powi(5));
-
-            //     Vec3::new(0., 0., 0.)
-            // }
             Material::Mix(kind, mat1, mat2) => {
                 let factor = kind.value(position, normal, outgoing);
                 factor * mat1.brdf(position, normal, outgoing, incoming)
                     + (1. - factor) * mat2.brdf(position, normal, outgoing, incoming)
             }
-            Material::NoReflect => Vec3::new(0., 0., 0.),
+            Material::NoReflect => Vec3::zeros(),
         }
     }
 
     fn pdf(&self) -> Option<Pdf> {
         match self {
             Material::Diffuse(_, _) => Some(Pdf::Cosine),
-            Material::Mirror(_, _) => Some(Pdf::Dirac),
+            Material::Mirror(_, _) => Some(Pdf::Dirac(DiracType::Reflect)),
+            Material::Refract {
+                attenuation: _,
+                ior,
+                color: _,
+            } => Some(Pdf::Dirac(DiracType::Refract(*ior))),
+            Material::Glass(_) => None,
             Material::CookTorrance { m, color: _ } => Some(Pdf::Beckmann(*m)),
             Material::CookTorranceDielectric {
                 ior: _,
@@ -308,6 +365,12 @@ impl Brdf for Material {
     fn is_dirac(&self) -> bool {
         match self {
             Material::Mirror(_, _) => true,
+            Material::Refract {
+                attenuation: _,
+                ior: _,
+                color: _,
+            } => true,
+            Material::Glass(_) => true,
             Material::Mix(_, mat1, mat2) => mat1.is_dirac() || mat2.is_dirac(),
             _ => false,
         }
@@ -387,6 +450,47 @@ impl DiracBrdf for Material {
                 let incoming = pdf.generate(position, normal, outgoing);
                 (*attenuation * *color, Some(Ray::new(position, incoming)))
             }
+            Material::Refract {
+                attenuation,
+                ior: _,
+                color,
+            } => {
+                let pdf = self.pdf().unwrap();
+                let incoming = pdf.generate(position, normal, outgoing);
+                (*attenuation * *color, Some(Ray::new(position, incoming)))
+            }
+            Material::Glass(glass) => {
+                let cos_theta = outgoing.dot(normal);
+
+                let (ior_in, ior_out, cos_theta, normal) = if cos_theta > 0. {
+                    (1., glass.ior, cos_theta, normal)
+                } else {
+                    (glass.ior, 1., -cos_theta, -1. * normal)
+                };
+
+                let sin_theta = (1. - cos_theta * cos_theta).sqrt();
+                let ior_ratio = ior_in / ior_out;
+
+                let incoming = if ior_ratio * sin_theta > 1. {
+                    // Total internal reflection
+                    2. * cos_theta * normal - outgoing
+                } else {
+                    let fresnel =
+                        Fresnel::SchlickDielectric { ior_in, ior_out }.value(normal, outgoing);
+                    if rand::random::<f64>() < fresnel.x() {
+                        2. * cos_theta * normal - outgoing
+                    } else {
+                        let dir_parallel = ior_ratio * (cos_theta * normal - outgoing);
+                        let dir_perp = -(1. - dir_parallel.mag_2()).sqrt() * normal;
+                        dir_perp + dir_parallel
+                    }
+                };
+
+                (
+                    glass.attenuation * glass.color,
+                    Some(Ray::new(position, incoming)),
+                )
+            }
             Material::Mix(kind, mat1, mat2) => {
                 if rand::random::<f64>() < kind.value(position, normal, outgoing) {
                     mat1.evaluate(position, normal, outgoing, pdf)
@@ -408,15 +512,15 @@ fn schlick_metallic(r0: Vec3, normal: Vec3, outgoing: Vec3) -> Vec3 {
 }
 
 enum Fresnel {
-    SchlickDielectric(f64),
+    SchlickDielectric { ior_in: f64, ior_out: f64 },
     SchlickMetallic(Vec3),
 }
 
 impl Fresnel {
     fn value(&self, normal: Vec3, outgoing: Vec3) -> Vec3 {
         match self {
-            Fresnel::SchlickDielectric(ior) => {
-                let r0 = (1. - ior) / (1. + ior);
+            Fresnel::SchlickDielectric { ior_in, ior_out } => {
+                let r0 = (ior_in - ior_out) / (ior_in + ior_out);
                 let r0 = r0 * r0;
                 let fresnel = schlick_dielectric(r0, normal, outgoing);
                 Vec3::new(fresnel, fresnel, fresnel)
