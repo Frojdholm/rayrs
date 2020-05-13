@@ -1,0 +1,323 @@
+#LyX 2.3 created this file. For more info see http://www.lyx.org/
+\lyxformat 544
+\begin_document
+\begin_header
+\save_transient_properties true
+\origin unavailable
+\textclass powerdot
+\options style=sailor
+\use_default_options true
+\maintain_unincluded_children false
+\language english
+\language_package default
+\inputencoding auto
+\fontencoding global
+\font_roman "default" "default"
+\font_sans "default" "default"
+\font_typewriter "default" "default"
+\font_math "auto" "auto"
+\font_default_family default
+\use_non_tex_fonts false
+\font_sc false
+\font_osf false
+\font_sf_scale 100 100
+\font_tt_scale 100 100
+\use_microtype true
+\use_dash_ligatures true
+\graphics default
+\default_output_format pdf
+\output_sync 0
+\bibtex_command default
+\index_command default
+\paperfontsize default
+\spacing single
+\use_hyperref false
+\papersize a4paper
+\use_geometry true
+\use_package amsmath 1
+\use_package amssymb 1
+\use_package cancel 1
+\use_package esint 1
+\use_package mathdots 1
+\use_package mathtools 1
+\use_package mhchem 1
+\use_package stackrel 1
+\use_package stmaryrd 1
+\use_package undertilde 1
+\cite_engine basic
+\cite_engine_type default
+\biblio_style plain
+\use_bibtopic false
+\use_indices false
+\paperorientation portrait
+\suppress_date false
+\justification false
+\use_refstyle 1
+\use_minted 0
+\index Index
+\shortcut idx
+\color #008000
+\end_index
+\secnumdepth 3
+\tocdepth 3
+\paragraph_separation skip
+\defskip medskip
+\is_math_indent 0
+\math_numbering_side default
+\quotes_style english
+\dynamic_quotes 0
+\papercolumns 1
+\papersides 1
+\paperpagestyle default
+\tracking_changes false
+\output_changes false
+\html_math_output 0
+\html_css_as_file 0
+\html_be_strict false
+\end_header
+
+\begin_body
+
+\begin_layout Title
+Microfacet Material Models
+\end_layout
+
+\begin_layout Author
+Hampus Fröjdholm
+\end_layout
+
+\begin_layout Date
+15 May 2020
+\end_layout
+
+\begin_layout WideSlide
+BRDF Introduction
+\end_layout
+
+\begin_layout Itemize
+Bidirectional reflectance distribution function — 
+\begin_inset Formula $f(\omega_{i},\omega_{o})$
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\[
+L_{r}(\omega_{o})=\int_{\Omega}L_{i}(\omega_{i})f(\omega_{i},\omega_{o})\cos(\theta_{i})\,\mathrm{d}\omega_{i}
+\]
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Itemize
+Physically plausible BRDFs
+\end_layout
+
+\begin_deeper
+\begin_layout Itemize
+Positive
+\end_layout
+
+\begin_layout Itemize
+Energy conserving
+\end_layout
+
+\begin_layout Itemize
+Helmholtz recprocity
+\end_layout
+
+\end_deeper
+\begin_layout Itemize
+Microfacets
+\end_layout
+
+\begin_deeper
+\begin_layout Itemize
+Perfectly specular facets with random directions
+\end_layout
+
+\begin_layout Itemize
+Think scratches in metal
+\end_layout
+
+\end_deeper
+\begin_layout EndSlide
+
+\end_layout
+
+\begin_layout WideSlide
+Cook-Torrance
+\end_layout
+
+\begin_layout Itemize
+The BRDF: 
+\begin_inset Formula 
+\[
+\frac{F(\theta_{o})D(\mathbf{H})G(\omega_{i},\omega_{o})}{4(\omega_{i}\cdot\mathbf{N})(\omega_{o}\cdot\mathbf{N})}
+\]
+
+\end_inset
+
+
+\end_layout
+
+\begin_deeper
+\begin_layout Itemize
+\begin_inset Formula $F$
+\end_inset
+
+: Fresnel
+\end_layout
+
+\begin_layout Itemize
+\begin_inset Formula $D$
+\end_inset
+
+: Microfacet distribution
+\end_layout
+
+\begin_layout Itemize
+\begin_inset Formula $G$
+\end_inset
+
+: Geometric occlusion
+\end_layout
+
+\end_deeper
+\begin_layout Standard
+\begin_inset Float figure
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Float figure
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Graphics
+	filename microfacet.svg
+	width 45text%
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+Microfacets
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+
+ 
+\begin_inset Float figure
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Graphics
+	filename geometric_occlusion.svg
+	width 45text%
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+Occlusion of microfacets
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout WideSlide
+Cook-Torrance
+\end_layout
+
+\begin_layout Itemize
+The BRDF: 
+\begin_inset Formula 
+\[
+\frac{F(\theta_{o})D(\mathbf{H})G(\omega_{i},\omega_{o})}{4(\omega_{i}\cdot\mathbf{N})(\omega_{o}\cdot\mathbf{N})}
+\]
+
+\end_inset
+
+
+\begin_inset Formula 
+\begin{align*}
+F= & R_{0}+(1-R_{0})(1-\cos(\theta_{o}))^{5},\;R_{0}=\left(\frac{1-\eta}{1+\eta}\right)^{2}\\
+D= & \frac{e^{-\frac{\tan^{2}(\theta_{h})}{\alpha^{2}}}}{\pi\alpha^{2}\cos^{4}(\theta_{h})}\\
+G= & \min\left(\frac{2(\mathbf{N}\cdot\mathbf{H})(\mathbf{N}\cdot\omega_{i})}{\mathbf{H}\cdot\omega_{i}},\frac{2(\mathbf{N}\cdot\mathbf{H})(\mathbf{N}\cdot\omega_{o})}{\mathbf{H}\cdot\omega_{i}},1\right)
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout EndSlide
+
+\end_layout
+
+\begin_layout WideSlide
+Advantages
+\end_layout
+
+\begin_layout Itemize
+Can be used for both metals and dieletrics
+\end_layout
+
+\begin_layout EndSlide
+
+\end_layout
+
+\end_body
+\end_document

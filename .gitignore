@@ -1,5 +1,7 @@
 /target
 
+venv/
+
 *.ppm
 *.png
 *.hdr
