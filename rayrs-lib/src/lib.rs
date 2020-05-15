@@ -1,14 +1,15 @@
-mod bvh;
+pub mod bvh;
 pub mod geometry;
 pub mod image;
 pub mod material;
+pub mod test_scenes;
 pub mod vecmath;
 pub mod wavefront_obj;
 
 use vecmath::Vec3;
 
 use geometry::{Axis, AxisAlignedBoundingBox, Hittable, Plane, Sphere, Triangle};
-use material::{Brdf, DiracBrdf, Emission, Emitting, Glass, Material, MixKind};
+use material::{Brdf, DiracBrdf, Emission, Emitting, Material, MixKind};
 
 use image::Image;
 
@@ -310,47 +311,6 @@ impl Scene {
         Scene::new(objects, z_near, z_far, BvhHeuristic::Midpoint, hdri)
     }
 
-    pub fn cook_torrance_test(z_near: f64, z_far: f64, hdri: Image) -> Self {
-        let white = Material::Diffuse(1., Vec3::ones() * 0.8);
-        let mirror = Material::Mirror(1., Vec3::ones());
-        let refract = Material::Refract {
-            attenuation: 1.,
-            ior: 1.5,
-            color: Vec3::ones(),
-        };
-        let glass = Material::Glass(Glass::new(1.5, 1., Vec3::ones()));
-        let cook_torrance = Material::CookTorrance {
-            m: 0.1,
-            color: Vec3::new(0.722, 0.451, 0.2),
-        };
-        let floor = Material::CookTorrance {
-            m: 0.5,
-            color: Vec3::ones() * 0.8, // Vec3::new(0.722, 0.451, 0.2),
-        };
-
-        let plastic = Material::Mix(
-            MixKind::Fresnel(1.5),
-            Box::new(Material::CookTorranceDielectric {
-                ior: 1.5,
-                m: 0.5,
-                color: Vec3::ones() * 0.8,
-            }),
-            Box::new(Material::Diffuse(1., Vec3::ones() * 0.1)),
-        );
-
-        let bottom = Object::plane(Axis::Y, -20., 20., -20., 20., 0., floor, Emission::Dark);
-
-        //let sphere1 = Object::sphere(0.5, Vec3::new(-1., -2., 0.5), mix.clone(), Emission::Dark);
-        //let sphere2 = Object::sphere(1., Vec3::new(1., -1.5, -0.5), mix, Emission::Dark);
-        let sphere = Object::sphere(1., Vec3::unit_y(), cook_torrance, Emission::Dark);
-        //let suzanne = wavefront_obj::load_obj_file("suzanne.obj").unwrap();
-        //let suzanne = Object::from_triangles(suzanne, glass, Emission::Dark);
-
-        let objects = vec![bottom, sphere];
-        //objects.extend(suzanne);
-        Scene::new(objects, z_near, z_far, BvhHeuristic::Midpoint, hdri)
-    }
-
     pub fn dragon(z_near: f64, z_far: f64, hdri: Image) -> Self {
         let green = Material::Diffuse(1., Vec3::new(0., 1., 0.));
         let red = Material::Diffuse(1., Vec3::new(1., 0., 0.));
@@ -417,7 +377,7 @@ impl Scene {
 
         let x = phi / (2. * PI) * self.hdri.width() as f64;
         let y = theta / PI * self.hdri.height() as f64;
-        0.5 * self.hdri.pixel(y.floor() as usize, x.floor() as usize)
+        self.hdri.pixel(y.floor() as usize, x.floor() as usize)
     }
 
     pub fn sky(&self, dir: Vec3) -> Vec3 {
@@ -579,6 +539,7 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32) -> Vec3 {
                 // );
 
                 let outgoing = pdf.generate(position, normal, incoming);
+
                 (
                     obj.mat.brdf(position, normal, incoming, outgoing)
                         / pdf.value(position, normal, incoming, outgoing),
