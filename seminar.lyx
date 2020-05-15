@@ -79,7 +79,7 @@
 \begin_body
 
 \begin_layout Title
-Microfacet Material Models
+Microfacet Models
 \end_layout
 
 \begin_layout Author
@@ -87,11 +87,23 @@ Hampus Fröjdholm
 \end_layout
 
 \begin_layout Date
-15 May 2020
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+today
 \end_layout
 
-\begin_layout WideSlide
-BRDF Introduction
+\end_inset
+
+
+\end_layout
+
+\begin_layout Slide
+BRDF Recap
 \end_layout
 
 \begin_layout Itemize
@@ -132,16 +144,20 @@ Helmholtz recprocity
 
 \end_deeper
 \begin_layout Itemize
-Microfacets
+Microfacets models
 \end_layout
 
 \begin_deeper
 \begin_layout Itemize
-Perfectly specular facets with random directions
+Models rough surfaces
 \end_layout
 
 \begin_layout Itemize
-Think scratches in metal
+Microfacets, think scratches
+\end_layout
+
+\begin_layout Itemize
+BRDF for the facet + facet distribution
 \end_layout
 
 \end_deeper
@@ -149,7 +165,7 @@ Think scratches in metal
 
 \end_layout
 
-\begin_layout WideSlide
+\begin_layout Slide
 Cook-Torrance
 \end_layout
 
@@ -184,7 +200,7 @@ The BRDF:
 \begin_inset Formula $G$
 \end_inset
 
-: Geometric occlusion
+: Geometric term
 \end_layout
 
 \end_deeper
@@ -277,8 +293,8 @@ Occlusion of microfacets
 
 \end_layout
 
-\begin_layout WideSlide
-Cook-Torrance
+\begin_layout Slide
+Cook-Torrance continued
 \end_layout
 
 \begin_layout Itemize
@@ -307,12 +323,44 @@ G= & \min\left(\frac{2(\mathbf{N}\cdot\mathbf{H})(\mathbf{N}\cdot\omega_{i})}{\m
 
 \end_layout
 
-\begin_layout WideSlide
-Advantages
+\begin_layout Slide
+Sources
 \end_layout
 
 \begin_layout Itemize
-Can be used for both metals and dieletrics
+\begin_inset CommandInset href
+LatexCommand href
+name "Phyiscally Based Rendering: From Theory To Implementation"
+target "http://www.pbr-book.org/"
+literal "false"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Itemize
+\begin_inset CommandInset href
+LatexCommand href
+name "UC Davis, Ray Tracing for Global Illumination"
+target "https://www.youtube.com/watch?v=k9Nz2z1jTFQ&list=PLslgisHe5tBPckSYyKoU3jEA4bqiFmNBJ"
+literal "false"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Itemize
+\begin_inset CommandInset href
+LatexCommand href
+name "Physically Based Rendering - Cook–Torrance"
+target "http://www.codinglabs.net/article_physically_based_rendering_cook_torrance.aspx"
+literal "false"
+
+\end_inset
+
+
 \end_layout
 
 \begin_layout EndSlide
