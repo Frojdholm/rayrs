@@ -183,18 +183,41 @@ impl Image {
     }
 
     pub fn to_raw_bytes(&self, gamma: f64) -> Vec<u8> {
-        self.image
+        let mut bright_pixels = 0;
+        let mut nan_pixels = 0;
+        let mut negative_pixels = 0;
+        let bytes = self
+            .image
             .iter()
-            .fold(Vec::with_capacity(self.image.len() * 3), |mut acc, val| {
+            .map(|val| {
+                if val.x().is_nan() || val.y().is_nan() || val.z().is_nan() {
+                    nan_pixels += 1;
+                }
+                if val.x() < 0. || val.y() < 0. || val.z() < 0. {
+                    negative_pixels += 1;
+                }
+                if val.x() > 1. || val.y() > 1. || val.z() > 1. {
+                    bright_pixels += 1;
+                }
                 let pixel = val.clip(0., 1.).powf(gamma);
                 let r = (255.99 * pixel.x()) as u8;
                 let g = (255.99 * pixel.y()) as u8;
                 let b = (255.99 * pixel.z()) as u8;
-                acc.push(r);
-                acc.push(g);
-                acc.push(b);
-                acc
+                vec![r, g, b]
             })
+            .flatten()
+            .collect();
+        println!("Clamped pixels: {}", bright_pixels);
+        println!("NaN pixels: {}", nan_pixels);
+        println!("Negative pixels: {}", negative_pixels);
+        bytes
+    }
+
+    pub fn pixels_f32(self) -> Vec<[f32; 3]> {
+        self.image
+            .into_iter()
+            .map(|pixel| [pixel.x() as f32, pixel.y() as f32, pixel.z() as f32])
+            .collect()
     }
 
     pub fn save(&self, filename: &str, image_format: ImageFormat) -> Result<()> {
