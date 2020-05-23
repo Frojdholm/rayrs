@@ -9,13 +9,11 @@ pub mod wavefront_obj;
 use vecmath::Vec3;
 
 use geometry::{Axis, AxisAlignedBoundingBox, Hittable, Plane, Sphere, Triangle};
-use material::{Brdf, DiracBrdf, Emission, Emitting, Material, MixKind};
+use material::{Emission, Emitting, Material};
 
 use image::Image;
 
 use bvh::{Bvh, BvhHeuristic, RayIntersection};
-
-use rand::Rng;
 
 use std::f64::consts::PI;
 use std::ops::Range;
@@ -169,205 +167,205 @@ impl Scene {
         }
     }
 
-    pub fn fresnel_test(z_near: f64, z_far: f64, hdri: Image) -> Self {
-        let white = Material::Diffuse(1., Vec3::ones());
-        let black = Material::Diffuse(1., Vec3::zeros());
-        let mix = Material::Mix(MixKind::Fresnel(1.5), Box::new(black), Box::new(white));
+    // pub fn fresnel_test(z_near: f64, z_far: f64, hdri: Image) -> Self {
+    //     let white = Material::Diffuse(1., Vec3::ones());
+    //     let black = Material::Diffuse(1., Vec3::zeros());
+    //     let mix = Material::Mix(MixKind::Fresnel(1.5), Box::new(black), Box::new(white));
 
-        let sphere = Object::sphere(0.1, Vec3::zeros(), mix, Emission::Dark);
+    //     let sphere = Object::sphere(0.1, Vec3::zeros(), mix, Emission::Dark);
 
-        Scene::new(
-            vec![sphere],
-            z_near,
-            z_far,
-            BvhHeuristic::Sah { splits: 1000 },
-            hdri,
-        )
-    }
+    //     Scene::new(
+    //         vec![sphere],
+    //         z_near,
+    //         z_far,
+    //         BvhHeuristic::Sah { splits: 1000 },
+    //         hdri,
+    //     )
+    // }
 
-    pub fn bvh_test(z_near: f64, z_far: f64, hdri: Image) -> Self {
-        let max_spheres = 500;
-        let mut rng = rand::thread_rng();
+    // pub fn bvh_test(z_near: f64, z_far: f64, hdri: Image) -> Self {
+    //     let max_spheres = 500;
+    //     let mut rng = rand::thread_rng();
 
-        let mut objects = Vec::with_capacity(max_spheres);
+    //     let mut objects = Vec::with_capacity(max_spheres);
 
-        for _ in 0..max_spheres {
-            let sphere = Object::sphere(
-                rng.gen_range(0.5, 1.),
-                Vec3::new(
-                    rng.gen_range(-10., 10.),
-                    rng.gen_range(-1., 20.),
-                    rng.gen_range(-20., 0.),
-                ),
-                Material::Diffuse(
-                    1.,
-                    Vec3::new(
-                        rng.gen_range(0.1, 0.9),
-                        rng.gen_range(0.1, 0.9),
-                        rng.gen_range(0.1, 0.9),
-                    ),
-                ),
-                Emission::Dark,
-            );
+    //     for _ in 0..max_spheres {
+    //         let sphere = Object::sphere(
+    //             rng.gen_range(0.5, 1.),
+    //             Vec3::new(
+    //                 rng.gen_range(-10., 10.),
+    //                 rng.gen_range(-1., 20.),
+    //                 rng.gen_range(-20., 0.),
+    //             ),
+    //             Material::Diffuse(
+    //                 1.,
+    //                 Vec3::new(
+    //                     rng.gen_range(0.1, 0.9),
+    //                     rng.gen_range(0.1, 0.9),
+    //                     rng.gen_range(0.1, 0.9),
+    //                 ),
+    //             ),
+    //             Emission::Dark,
+    //         );
 
-            objects.push(sphere);
-        }
+    //         objects.push(sphere);
+    //     }
 
-        objects.push(Object::sphere(
-            10000.,
-            Vec3::new(0., -10001., 0.),
-            Material::Diffuse(1., Vec3::ones()),
-            Emission::Dark,
-        ));
+    //     objects.push(Object::sphere(
+    //         10000.,
+    //         Vec3::new(0., -10001., 0.),
+    //         Material::Diffuse(1., Vec3::ones()),
+    //         Emission::Dark,
+    //     ));
 
-        let light = Object::plane(
-            Axis::YRev,
-            -0.8,
-            0.8,
-            -0.8,
-            0.8,
-            2.4999,
-            Material::NoReflect,
-            Emission::Emissive(5., Vec3::ones()),
-        );
-        objects.push(light);
+    //     let light = Object::plane(
+    //         Axis::YRev,
+    //         -0.8,
+    //         0.8,
+    //         -0.8,
+    //         0.8,
+    //         2.4999,
+    //         Material::NoReflect,
+    //         Emission::Emissive(5., Vec3::ones()),
+    //     );
+    //     objects.push(light);
 
-        Scene::new(
-            objects,
-            z_near,
-            z_far,
-            BvhHeuristic::Sah { splits: 1000 },
-            hdri,
-        )
-    }
+    //     Scene::new(
+    //         objects,
+    //         z_near,
+    //         z_far,
+    //         BvhHeuristic::Sah { splits: 1000 },
+    //         hdri,
+    //     )
+    // }
 
-    pub fn cornell_box(z_near: f64, z_far: f64, hdri: Image) -> Self {
-        let green = Material::Diffuse(1., Vec3::unit_y());
-        let red = Material::Diffuse(1., Vec3::unit_x());
-        let white = Material::Diffuse(1., Vec3::ones());
-        let mirror = Material::Mirror(1., Vec3::ones());
-        let mix = Material::Mix(
-            MixKind::Fresnel(1.5),
-            Box::new(mirror),
-            Box::new(white.clone()),
-        );
-        let cook_torrance = Material::CookTorrance {
-            m: 0.5,
-            color: Vec3::new(0.8, 0.8, 0.8), //Vec3::new(0.722, 0.451, 0.2),
-        };
+    // pub fn cornell_box(z_near: f64, z_far: f64, hdri: Image) -> Self {
+    //     let green = Material::Diffuse(1., Vec3::unit_y());
+    //     let red = Material::Diffuse(1., Vec3::unit_x());
+    //     let white = Material::Diffuse(1., Vec3::ones());
+    //     let mirror = Material::Mirror(1., Vec3::ones());
+    //     let mix = Material::Mix(
+    //         MixKind::Fresnel(1.5),
+    //         Box::new(mirror),
+    //         Box::new(white.clone()),
+    //     );
+    //     let cook_torrance = Material::CookTorrance {
+    //         m: 0.5,
+    //         color: Vec3::new(0.8, 0.8, 0.8), //Vec3::new(0.722, 0.451, 0.2),
+    //     };
 
-        let left = Object::plane(Axis::X, -2.5, 2.5, -2.5, 2.5, -2.5, red, Emission::Dark);
-        let right = Object::plane(Axis::XRev, -2.5, 2.5, -2.5, 2.5, 2.5, green, Emission::Dark);
-        let top = Object::plane(
-            Axis::YRev,
-            -2.5,
-            2.5,
-            -2.5,
-            2.5,
-            2.5,
-            white.clone(),
-            Emission::Dark,
-        );
-        let bottom = Object::plane(
-            Axis::Y,
-            -2.5,
-            2.5,
-            -2.5,
-            2.5,
-            -2.5,
-            white.clone(),
-            Emission::Dark,
-        );
-        let back = Object::plane(
-            Axis::Z,
-            -2.5,
-            2.5,
-            -2.5,
-            2.5,
-            -2.5,
-            white.clone(),
-            Emission::Dark,
-        );
-        let light = Object::plane(
-            Axis::YRev,
-            -0.8,
-            0.8,
-            -0.8,
-            0.8,
-            2.4999,
-            Material::NoReflect,
-            Emission::Emissive(5., Vec3::ones()),
-        );
+    //     let left = Object::plane(Axis::X, -2.5, 2.5, -2.5, 2.5, -2.5, red, Emission::Dark);
+    //     let right = Object::plane(Axis::XRev, -2.5, 2.5, -2.5, 2.5, 2.5, green, Emission::Dark);
+    //     let top = Object::plane(
+    //         Axis::YRev,
+    //         -2.5,
+    //         2.5,
+    //         -2.5,
+    //         2.5,
+    //         2.5,
+    //         white.clone(),
+    //         Emission::Dark,
+    //     );
+    //     let bottom = Object::plane(
+    //         Axis::Y,
+    //         -2.5,
+    //         2.5,
+    //         -2.5,
+    //         2.5,
+    //         -2.5,
+    //         white.clone(),
+    //         Emission::Dark,
+    //     );
+    //     let back = Object::plane(
+    //         Axis::Z,
+    //         -2.5,
+    //         2.5,
+    //         -2.5,
+    //         2.5,
+    //         -2.5,
+    //         white.clone(),
+    //         Emission::Dark,
+    //     );
+    //     let light = Object::plane(
+    //         Axis::YRev,
+    //         -0.8,
+    //         0.8,
+    //         -0.8,
+    //         0.8,
+    //         2.4999,
+    //         Material::NoReflect,
+    //         Emission::Emissive(5., Vec3::ones()),
+    //     );
 
-        let sphere1 = Object::sphere(0.5, Vec3::new(-1., -2., 0.5), mix, Emission::Dark);
-        let sphere2 = Object::sphere(
-            1.,
-            Vec3::new(0.5, -1.5, -1.3),
-            cook_torrance,
-            Emission::Dark,
-        );
+    //     let sphere1 = Object::sphere(0.5, Vec3::new(-1., -2., 0.5), mix, Emission::Dark);
+    //     let sphere2 = Object::sphere(
+    //         1.,
+    //         Vec3::new(0.5, -1.5, -1.3),
+    //         cook_torrance,
+    //         Emission::Dark,
+    //     );
 
-        let objects = vec![left, right, top, bottom, back, light, sphere1, sphere2];
-        Scene::new(objects, z_near, z_far, BvhHeuristic::Midpoint, hdri)
-    }
+    //     let objects = vec![left, right, top, bottom, back, light, sphere1, sphere2];
+    //     Scene::new(objects, z_near, z_far, BvhHeuristic::Midpoint, hdri)
+    // }
 
-    pub fn dragon(z_near: f64, z_far: f64, hdri: Image) -> Self {
-        let green = Material::Diffuse(1., Vec3::new(0., 1., 0.));
-        let red = Material::Diffuse(1., Vec3::new(1., 0., 0.));
-        let white = Material::Diffuse(1., Vec3::new(1., 1., 1.));
-        let mirror = Material::Mirror(1., Vec3::new(1., 1., 1.));
-        let mix = Material::Mix(
-            MixKind::Fresnel(1.5),
-            Box::new(mirror),
-            Box::new(white.clone()),
-        );
+    // pub fn dragon(z_near: f64, z_far: f64, hdri: Image) -> Self {
+    //     let green = Material::Diffuse(1., Vec3::new(0., 1., 0.));
+    //     let red = Material::Diffuse(1., Vec3::new(1., 0., 0.));
+    //     let white = Material::Diffuse(1., Vec3::new(1., 1., 1.));
+    //     let mirror = Material::Mirror(1., Vec3::new(1., 1., 1.));
+    //     let mix = Material::Mix(
+    //         MixKind::Fresnel(1.5),
+    //         Box::new(mirror),
+    //         Box::new(white.clone()),
+    //     );
 
-        let left = Object::plane(Axis::X, -2.5, 2.5, -2.5, 2.5, -2.5, red, Emission::Dark);
-        let right = Object::plane(Axis::XRev, -2.5, 2.5, -2.5, 2.5, 2.5, green, Emission::Dark);
-        let top = Object::plane(
-            Axis::YRev,
-            -2.5,
-            2.5,
-            -2.5,
-            2.5,
-            2.5,
-            white.clone(),
-            Emission::Dark,
-        );
-        let bottom = Object::plane(
-            Axis::Y,
-            -2.5,
-            2.5,
-            -2.5,
-            2.5,
-            -2.5,
-            white.clone(),
-            Emission::Dark,
-        );
-        let back = Object::plane(Axis::Z, -2.5, 2.5, -2.5, 2.5, -2.5, white, Emission::Dark);
-        let light = Object::plane(
-            Axis::YRev,
-            -0.8,
-            0.8,
-            -0.8,
-            0.8,
-            2.4999,
-            Material::NoReflect,
-            Emission::Emissive(5., Vec3::new(1., 1., 1.)),
-        );
+    //     let left = Object::plane(Axis::X, -2.5, 2.5, -2.5, 2.5, -2.5, red, Emission::Dark);
+    //     let right = Object::plane(Axis::XRev, -2.5, 2.5, -2.5, 2.5, 2.5, green, Emission::Dark);
+    //     let top = Object::plane(
+    //         Axis::YRev,
+    //         -2.5,
+    //         2.5,
+    //         -2.5,
+    //         2.5,
+    //         2.5,
+    //         white.clone(),
+    //         Emission::Dark,
+    //     );
+    //     let bottom = Object::plane(
+    //         Axis::Y,
+    //         -2.5,
+    //         2.5,
+    //         -2.5,
+    //         2.5,
+    //         -2.5,
+    //         white.clone(),
+    //         Emission::Dark,
+    //     );
+    //     let back = Object::plane(Axis::Z, -2.5, 2.5, -2.5, 2.5, -2.5, white, Emission::Dark);
+    //     let light = Object::plane(
+    //         Axis::YRev,
+    //         -0.8,
+    //         0.8,
+    //         -0.8,
+    //         0.8,
+    //         2.4999,
+    //         Material::NoReflect,
+    //         Emission::Emissive(5., Vec3::new(1., 1., 1.)),
+    //     );
 
-        let dragon = wavefront_obj::load_obj_file("dragon.obj").unwrap();
-        let mut dragon = Object::from_triangles(dragon, mix, Emission::Dark);
-        let mut objects = vec![left, right, top, bottom, back, light];
-        objects.append(&mut dragon);
-        Scene::new(
-            objects,
-            z_near,
-            z_far,
-            BvhHeuristic::Sah { splits: 1000 },
-            hdri,
-        )
-    }
+    //     let dragon = wavefront_obj::load_obj_file("dragon.obj").unwrap();
+    //     let mut dragon = Object::from_triangles(dragon, mix, Emission::Dark);
+    //     let mut objects = vec![left, right, top, bottom, back, light];
+    //     objects.append(&mut dragon);
+    //     Scene::new(
+    //         objects,
+    //         z_near,
+    //         z_far,
+    //         BvhHeuristic::Sah { splits: 1000 },
+    //         hdri,
+    //     )
+    // }
 
     pub fn background(&self, dir: Vec3) -> Vec3 {
         let dir = dir.unit();
@@ -519,36 +517,16 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32) -> Vec3 {
         {
             let position = r.point(t);
             let normal = obj.geom.normal(position);
-            let incoming = -1. * r.direction.unit();
+            let view = -1. * r.direction.unit();
 
-            let (color, new_ray) = if obj.mat.is_dirac() {
-                // Materials that contain dirac deltas need to be handled
-                // explicitly.
-                let (color, new_ray) = obj.mat.evaluate(position, normal, incoming, None);
-                if let Some(new_ray) = new_ray {
-                    (color, new_ray)
-                } else {
-                    return color;
-                }
-            } else if let Some(pdf) = obj.mat.pdf() {
-                // Otherwise if we can sample the material we will do it.
-                // let pdf = Pdf::Mix(
-                //     MixKind::Constant(0.8),
-                //     Box::new(pdf),
-                //     Box::new(Pdf::Hittable(s.lights[0].clone())),
-                // );
+            let (color, new_ray) = obj.mat.evaluate(position, normal, view, None);
 
-                let outgoing = pdf.generate(position, normal, incoming);
-
-                (
-                    obj.mat.brdf(position, normal, incoming, outgoing)
-                        / pdf.value(position, normal, incoming, outgoing),
-                    Ray::new(position, outgoing),
-                )
-            } else {
-                // If we hit a non-reflecting object we can just return.
-                return throughput * obj.emission.emit();
+            r = match new_ray {
+                Some(r) => r,
+                // If we hit a non-reflecting object we can just return
+                None => return throughput * obj.emission.emit(),
             };
+
             throughput = throughput * color + obj.emission.emit();
 
             let p = throughput.x().max(throughput.y()).max(throughput.z());
@@ -557,7 +535,6 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32) -> Vec3 {
             }
 
             throughput /= p;
-            r = new_ray;
         } else {
             return throughput * s.background(r.direction);
         }

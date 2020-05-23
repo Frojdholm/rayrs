@@ -103,11 +103,11 @@ fn main() -> Result<(), ImageError> {
     //     "glass_sphere",
     //     test_scenes::glass_single_sphere,
     // )?;
-    generate_image(
-        "small_cathedral_02_2k.hdr",
-        "spheres_metallic",
-        test_scenes::cook_torrance_spheres_metallic,
-    )
+    // generate_image(
+    //     "small_cathedral_02_2k.hdr",
+    //     "spheres_metallic",
+    //     test_scenes::cook_torrance_spheres_metallic,
+    // )?;
     // generate_image(
     //     "small_cathedral_02_2k.hdr",
     //     "spheres_plastic",
@@ -132,5 +132,10 @@ fn main() -> Result<(), ImageError> {
     //     "small_cathedral_02_2k.hdr",
     //     "cook_torrance_spheres_frosted_glass",
     //     test_scenes::cook_torrance_spheres_frosted_glass,
-    // )
+    // )?;
+    generate_image(
+        "small_cathedral_02_2k.hdr",
+        "material_test",
+        test_scenes::material_test,
+    )
 }
