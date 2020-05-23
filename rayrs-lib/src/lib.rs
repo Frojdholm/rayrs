@@ -87,7 +87,7 @@ impl Camera {
             ppc,
             e_x: x,
             e_y: y,
-            z: (width.min(height) / (fov.to_radians() / 2.).tan()) * z,
+            z: (width / (fov.to_radians() / 2.).tan()) * z,
         }
     }
 
