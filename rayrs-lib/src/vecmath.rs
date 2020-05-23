@@ -54,6 +54,14 @@ impl Vector<f64> {
         Vector { data: [0., 0., 1.] }
     }
 
+    pub fn is_zeros(&self) -> bool {
+        self.data == [0., 0., 0.]
+    }
+
+    pub fn is_ones(&self) -> bool {
+        self.data == [1., 1., 1.]
+    }
+
     pub fn cross(self, other: Vector<f64>) -> Vector<f64> {
         Vector {
             data: [
