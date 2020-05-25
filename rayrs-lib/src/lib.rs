@@ -510,7 +510,8 @@ impl Object {
 }
 
 pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32) -> Vec3 {
-    let mut throughput = Vec3::new(1., 1., 1.);
+    let mut throughput = Vec3::ones();
+    let mut light = Vec3::zeros();
 
     for _ in 0..max_bounces {
         if let RayIntersection::Hit { t, obj } = s.bvh.intersect(r, s.t_range.start, s.t_range.end)
@@ -521,24 +522,26 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32) -> Vec3 {
 
             let (color, new_ray) = obj.mat.evaluate(position, normal, view, None);
 
+            light = light + throughput * obj.emission.emit();
+
             r = match new_ray {
                 Some(r) => r,
                 // If we hit a non-reflecting object we can just return
-                None => return throughput * obj.emission.emit(),
+                None => return light,
             };
 
-            throughput = throughput * color + obj.emission.emit();
+            throughput = throughput * color;
 
             let p = throughput.x().max(throughput.y()).max(throughput.z());
             if rand::random::<f64>() > p {
-                return throughput;
+                return light;
             }
 
             throughput /= p;
         } else {
-            return throughput * s.background(r.direction);
+            return light + throughput * s.background(r.direction);
         }
     }
 
-    Vec3::new(0., 0., 0.)
+    light
 }
