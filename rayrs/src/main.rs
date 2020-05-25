@@ -1,3 +1,5 @@
+/// A path tracer that generates images based on simulating light as paths.
+///
 use rayrs_lib::image::{Image, ImageBlock};
 use rayrs_lib::test_scenes;
 use rayrs_lib::vecmath::Vec3;
@@ -15,8 +17,13 @@ use image::{self, ColorType, ImageError, Rgb};
 
 use rayon::prelude::*;
 
+/// Samples per pixel.
 const SPP: u32 = 2000;
 
+/// Generate an image from a scene.
+///
+/// The function generates an image using the hdri and test scene. The result
+/// is saved as `outbase.png` and `outbase.hdr`.
 pub fn generate_image<P, F>(hdri_path: P, outbase: &str, test_scene: F) -> Result<(), ImageError>
 where
     P: AsRef<Path>,
