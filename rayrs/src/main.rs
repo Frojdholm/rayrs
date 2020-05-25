@@ -3,9 +3,11 @@ use rayrs_lib::test_scenes;
 use rayrs_lib::vecmath::Vec3;
 use rayrs_lib::{self, Camera, Scene};
 
+use std::env;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+use std::process;
 use std::time::Instant;
 
 use image::hdr::{HDREncoder, HdrDecoder};
@@ -93,49 +95,37 @@ where
 }
 
 fn main() -> Result<(), ImageError> {
+    let mut args = env::args();
+    if args.len() != 2 {
+        eprintln!("Usage: rayrs hdri_path");
+        process::exit(1);
+    }
+    // Skip program name
+    args.next();
+    let hdri = args.next().unwrap();
+    // generate_image(hdri, "copper_sphere", test_scenes::copper_single_sphere)?;
+    // generate_image(hdri, "glass_sphere", test_scenes::glass_single_sphere)?;
     // generate_image(
-    //     "small_cathedral_02_2k.hdr",
-    //     "copper_sphere",
-    //     test_scenes::copper_single_sphere,
-    // )?;
-    // generate_image(
-    //     "small_cathedral_02_2k.hdr",
-    //     "glass_sphere",
-    //     test_scenes::glass_single_sphere,
-    // )?;
-    // generate_image(
-    //     "small_cathedral_02_2k.hdr",
+    //     hdri,
     //     "spheres_metallic",
     //     test_scenes::cook_torrance_spheres_metallic,
     // )?;
     // generate_image(
-    //     "small_cathedral_02_2k.hdr",
+    //     hdri,
     //     "spheres_plastic",
     //     test_scenes::cook_torrance_spheres_plastic,
     // )?;
+    // generate_image(hdri, "copper_suzanne", test_scenes::copper_suzanne)?;
+    // generate_image(hdri, "glass_suzanne", test_scenes::glass_suzanne)?;
     // generate_image(
-    //     "small_cathedral_02_2k.hdr",
-    //     "copper_suzanne",
-    //     test_scenes::copper_suzanne,
-    // )?;
-    // generate_image(
-    //     "small_cathedral_02_2k.hdr",
-    //     "glass_suzanne",
-    //     test_scenes::glass_suzanne,
-    // )?;
-    // generate_image(
-    //     "small_cathedral_02_2k.hdr",
+    //     hdri,
     //     "cook_torrance_glass_sphere",
     //     test_scenes::cook_torrance_glass_single_sphere,
     // )?;
     // generate_image(
-    //     "small_cathedral_02_2k.hdr",
+    //     hdri,
     //     "cook_torrance_spheres_frosted_glass",
     //     test_scenes::cook_torrance_spheres_frosted_glass,
     // )?;
-    generate_image(
-        "small_cathedral_02_2k.hdr",
-        "material_test",
-        test_scenes::material_test,
-    )
+    generate_image(hdri, "material_test", test_scenes::material_test)
 }
