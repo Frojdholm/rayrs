@@ -719,7 +719,7 @@ impl Material {
 
                 if normal.dot(light) < 0. {
                     let inv_ior_ratio = 1. / ior_ratio;
-                    let denom = nv + inv_ior_ratio * nl;
+                    let denom = hv + inv_ior_ratio * hl;
                     let denom = denom * denom;
                     let pdf = (-tan_theta_h * tan_theta_h / ctg.alpha2).exp()
                         / (PI * ctg.alpha2 * normal.dot(new_halfway_vec).powi(4))
