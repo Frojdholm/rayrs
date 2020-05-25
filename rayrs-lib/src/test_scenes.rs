@@ -167,7 +167,18 @@ pub fn material_test(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
         Material::glass(1.45, Vec3::ones() * 0.8),
     ];
     let floor = Material::cook_torrance_metallic(0.5, Vec3::ones() * 0.8);
-    let bottom = Object::plane(Axis::Y, -25., 25., -25., 25., 0., floor, Emission::Dark);
+
+    let bottom = Object::plane(
+        Axis::Y,
+        -25.,
+        25.,
+        -25.,
+        25.,
+        0.,
+        floor.clone(),
+        Emission::Dark,
+    );
+    let back = Object::plane(Axis::ZRev, -25., 25., 0., 5., -5., floor, Emission::Dark);
     let len = mats.len() as isize;
     let spheres: Vec<_> = mats
         .into_iter()
@@ -181,12 +192,12 @@ pub fn material_test(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
             )
         })
         .collect();
-    let mut objects = vec![bottom];
+    let mut objects = vec![bottom, back];
     objects.extend(spheres);
 
     (
         Camera::new(
-            Vec3::new(0., 10., 20.),
+            Vec3::new(0., 3., 20.),
             Vec3::unit_y(),
             Vec3::unit_y(),
             90.,
