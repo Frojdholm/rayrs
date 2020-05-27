@@ -1,3 +1,9 @@
+//! Material models
+//!
+//! This module contains material models and their scattering behavior. It also
+//! contains other utilities needed to evaluate materials such as different
+//! functions for calculating Fresnel coefficients and PDFs.
+
 use super::geometry::Hittable;
 use super::vecmath::Vec3;
 use super::Ray;
@@ -10,9 +16,11 @@ pub enum ReflectType {
     Refract(f64),
 }
 
+/// A probability density function over the hemi-sphere.
 pub enum Pdf<'a> {
     Cosine,
     Uniform,
+    /// The Beckmann distribution is a distribution of halfway vectors.
     Beckmann(f64, ReflectType),
     Dirac(ReflectType),
     Hittable(&'a dyn Hittable),
@@ -20,6 +28,7 @@ pub enum Pdf<'a> {
 }
 
 impl<'a> Pdf<'a> {
+    /// Returns the value of the distribution for the light, view vector pair.
     pub fn value(&self, position: Vec3, normal: Vec3, light: Vec3, view: Vec3) -> f64 {
         match self {
             Pdf::Cosine => normal.dot(light.unit()) / PI,
@@ -79,6 +88,20 @@ impl<'a> Pdf<'a> {
         }
     }
 
+    /// Generate a vector from this distribution.
+    ///
+    /// The returned vector is generated from the position, normal and possibly
+    /// the view vector. The interpretation of the vector depends on the PDF.
+    /// For example the Dirac distribution can return a transmitted or reflected
+    /// vector and the Beckmann distribution returns a halfway vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let pdf = Pdf::Beckmann(0.05, ReflectType::Reflect);
+    ///
+    /// let halfway_vec = pdf.generate(Vec3::zeros(), Vec3::unit_z(), Vec3::unit_z());
+    /// ```
     pub fn generate(&self, position: Vec3, normal: Vec3, view: Vec3) -> Vec3 {
         match self {
             Pdf::Cosine => {
@@ -137,6 +160,7 @@ impl<'a> Pdf<'a> {
         }
     }
 
+    /// Returns true if the distrbution contains a Dirac delta function.
     pub fn is_dirac(&self) -> bool {
         match self {
             Pdf::Dirac(_) => true,
@@ -146,10 +170,14 @@ impl<'a> Pdf<'a> {
     }
 }
 
+/// Lets an object emit light in the scene.
 pub trait Emitting {
     fn emit(&self) -> Vec3;
 }
 
+/// Emission types.
+///
+/// The object can either emit light of a certain color or be dark.
 #[derive(Debug, Clone)]
 pub enum Emission {
     Emissive(f64, Vec3),
@@ -157,6 +185,7 @@ pub enum Emission {
 }
 
 impl Emission {
+    /// Create a new `Emission::Emissive`.
     pub fn new(strength: f64, color: Vec3) -> Emission {
         assert!(strength >= 0.);
         assert!(
@@ -178,12 +207,20 @@ impl Emitting for Emission {
     }
 }
 
+/// A bidirectional reflectance distribution function.
+///
+/// The BRDF is the simplest material model. Reflecting the light in the
+/// incident point.
 trait Brdf {
+    /// Evaluate the BRDF in the point for the given directions.
     fn brdf(&self, position: Vec3, normal: Vec3, light: Vec3, view: Vec3) -> Vec3;
+    /// Get the associated PDF for importance sampling.
     fn pdf(&self) -> Pdf;
+    /// Returns true if the BRDF contains a Dirac delta function.
     fn is_dirac(&self) -> bool;
 }
 
+/// A simple BRDF modelling perfectly random scattering at the surface.
 #[derive(Debug, Clone, Copy)]
 pub struct LambertianDiffuse {
     color: Vec3,
@@ -191,6 +228,7 @@ pub struct LambertianDiffuse {
 
 impl Brdf for LambertianDiffuse {
     fn brdf(&self, _position: Vec3, _normal: Vec3, _light: Vec3, _view: Vec3) -> Vec3 {
+        // The 1-over-PI factor is a normalizing factor for energy conservation.
         self.color * FRAC_1_PI
     }
 
@@ -203,6 +241,7 @@ impl Brdf for LambertianDiffuse {
     }
 }
 
+/// A BRDF model for perfect specular reflection.
 #[derive(Debug, Clone, Copy)]
 pub struct Mirror {
     color: Vec3,
@@ -210,6 +249,8 @@ pub struct Mirror {
 
 impl Brdf for Mirror {
     fn brdf(&self, _position: Vec3, normal: Vec3, light: Vec3, _view: Vec3) -> Vec3 {
+        // Divide by the cos(theta) term to cancel with the projection term in
+        // the integral.
         self.color / normal.dot(light).abs()
     }
 
@@ -222,15 +263,21 @@ impl Brdf for Mirror {
     }
 }
 
+/// A BTDF model for perfect specular refraction.
 #[derive(Debug, Clone, Copy)]
 pub struct Refract {
+    /// Index of refraction.
     ior: f64,
     color: Vec3,
 }
 
 impl Brdf for Refract {
     fn brdf(&self, _position: Vec3, normal: Vec3, light: Vec3, view: Vec3) -> Vec3 {
+        // Using BRDF to implement a BTDF is sort of a hack. Which is fine for
+        // perfect specular refraction since it is not that complex.
+
         if light.dot(view) > 0. {
+            // In case of total internal reflection we don't return anything.
             Vec3::zeros()
         } else {
             self.color / normal.dot(light).abs()
@@ -246,6 +293,11 @@ impl Brdf for Refract {
     }
 }
 
+/// A BSDF model describing glass.
+///
+/// This BSDF is just a mix material that mixes a specular reflection BRDF
+/// and a specular refraction BTDF. It does so more efficiently than a mix
+/// material since it can importance sample the Fresnel coefficient.
 #[derive(Debug, Clone)]
 pub struct Glass {
     ior: f64,
@@ -253,8 +305,24 @@ pub struct Glass {
     reflect: Box<Material>,
 }
 
+/// The Cook-Torrance model using a metallic index of refraction
+///
+/// The Cook-Torrance model is a microfacet model that describes specular
+/// reflection. It has the formula
+/// ```text
+///     f(w_i, w_o) = DFG / (4pi * cos(theta_i) * cos(theta_o)),
+/// ```
+/// where `w_i` and `w_o` are the incoming and outgoing directions, `D` the microfacet
+/// distribution, `G` the geometric factor and `F` the fresnel term. In this case
+/// the microfacet distribution that has been used is the Beckmann distribution
+/// and the geometric factor
+/// ```text
+///     G = min(2.0 * cos(theta_h) * cos(theta_o) / dot(H, w_o), 2.0 * cos(theta_h) * cos(theta_i) / dot(H, w_i), 1).
+/// ```
+/// The Fresnel term is calculated using the Schlick approximation.
 #[derive(Debug, Clone, Copy)]
 pub struct CookTorranceMetallic {
+    /// Roughness
     alpha2: f64,
     color: Vec3,
 }
@@ -266,10 +334,11 @@ impl Brdf for CookTorranceMetallic {
 
         let halfway_vec = view + light;
 
+        // At glancing angles we have a singularity so we return the analytic
+        // limit value which is 0.
         if nv == 0.0 || nl == 0.0 {
             return Vec3::zeros();
         }
-
         if halfway_vec.is_zeros() {
             return Vec3::zeros();
         }
@@ -280,9 +349,11 @@ impl Brdf for CookTorranceMetallic {
 
         let tan_theta_h = theta_h.tan();
 
+        // Another singularity.
         if tan_theta_h.is_infinite() {
             return Vec3::zeros();
         }
+
         let beckmann =
             (-tan_theta_h * tan_theta_h / (self.alpha2)).exp() / (PI * self.alpha2 * nh.powi(4));
         let hv = halfway_vec.dot(view);
@@ -302,8 +373,14 @@ impl Brdf for CookTorranceMetallic {
     }
 }
 
+/// The Cook-Torrance model using a dielectric index of refraction.
+///
+/// For an explanation of the Cook-Torrance model see [`CookTorranceMetallic`].
+///
+/// [`CookTorranceMetallic`]: ../material/struct.CookTorranceMetallic.html
 #[derive(Debug, Clone, Copy)]
 pub struct CookTorranceDielectric {
+    /// Roughness
     alpha2: f64,
     ior: f64,
     color: Vec3,
@@ -326,6 +403,8 @@ impl CookTorranceDielectric {
             return (Vec3::zeros(), None);
         }
 
+        // Conversion factor for going from a distribution over halfway vectors
+        // to a distribution over view vectors.
         let frac_dwh_dwi = 4.0 * halfway_vec.dot(light);
 
         let color = self.brdf(position, normal, light, view) * nl;
@@ -349,10 +428,11 @@ impl Brdf for CookTorranceDielectric {
 
         let halfway_vec = view + light;
 
+        // At glancing angles we have a singularity so we return the analytic
+        // limit value which is 0.
         if nv == 0.0 || nl == 0.0 {
             return Vec3::zeros();
         }
-
         if halfway_vec.is_zeros() {
             return Vec3::zeros();
         }
@@ -363,6 +443,7 @@ impl Brdf for CookTorranceDielectric {
 
         let tan_theta_h = theta_h.tan();
 
+        // Another singularity.
         if tan_theta_h.is_infinite() {
             return Vec3::zeros();
         }
@@ -372,8 +453,8 @@ impl Brdf for CookTorranceDielectric {
         let geometric_factor = (2.0 * nh * nv / hv).min((2.0 * nh * nl / hv).min(1.));
 
         let fresnel = Fresnel::SchlickDielectric {
-            ior_in: self.ior,
-            ior_out: 1.,
+            ior_in: 1.,
+            ior_out: self.ior,
         }
         .value(halfway_vec, view);
 
@@ -510,6 +591,7 @@ pub struct CookTorranceGlass {
     reflect: CookTorranceDielectric,
 }
 
+/// A material that can be evaluated to find the color and scattering direction.
 #[derive(Debug, Clone)]
 pub enum Material {
     Diffuse(LambertianDiffuse),
@@ -525,18 +607,22 @@ pub enum Material {
 }
 
 impl Material {
+    /// Returns a new Lambertian diffuse material.
     pub fn diffuse(color: Vec3) -> Material {
         Material::Diffuse(LambertianDiffuse { color })
     }
 
+    /// Returns a new perfect specular reflection material.
     pub fn mirror(color: Vec3) -> Material {
         Material::Mirror(Mirror { color })
     }
 
+    /// Returns a new perfect specular transmission material.
     pub fn refract(ior: f64, color: Vec3) -> Material {
         Material::Refract(Refract { ior, color })
     }
 
+    /// Returns a new glass material.
     pub fn glass(ior: f64, color: Vec3) -> Material {
         Material::Glass(Glass {
             ior,
@@ -545,6 +631,7 @@ impl Material {
         })
     }
 
+    /// Returns a new Cook-Torrance material with metallic index of refraction.
     pub fn cook_torrance_metallic(alpha: f64, color: Vec3) -> Material {
         Material::CookTorranceMetallic(CookTorranceMetallic {
             alpha2: alpha * alpha,
@@ -552,6 +639,7 @@ impl Material {
         })
     }
 
+    /// Returns a new Cook-Torrance material with dielectric index of refraction.
     pub fn cook_torrance_dielectric(alpha: f64, ior: f64, color: Vec3) -> Material {
         Material::CookTorranceDielectric(CookTorranceDielectric {
             alpha2: alpha * alpha,
@@ -578,6 +666,14 @@ impl Material {
         })
     }
 
+    /// Evaluate the material in the intersection point.
+    ///
+    /// The result of the evaluation will be the new scattered direction and
+    /// the path throughput of the material for the view and scattered
+    /// direction pair.
+    ///
+    /// Passing in a PDF allows for multiple importance sampling between that
+    /// PDF and the PDF provided by the material model.
     pub fn evaluate(
         &self,
         position: Vec3,
@@ -612,6 +708,8 @@ impl Material {
                 (color, Some(Ray::new(position, light)))
             }
             Self::Glass(g) => {
+                // The glass material will mix between the refract and reflection
+                // based on the fresnel coefficient.
                 let cos_theta = normal.dot(view);
 
                 let (ior_in, ior_out, cos_theta, normal) = if cos_theta > 0. {
@@ -643,10 +741,13 @@ impl Material {
                 let light = 2. * halfway_vec.dot(view) * halfway_vec - view;
 
                 let nl = normal.dot(light);
+                // If we are inside the material we just terminate.
                 if nl < 0.0 {
                     return (Vec3::zeros(), None);
                 }
 
+                // Conversion factor due to change from distribution over
+                // halfway vectors to distribution over light vectors.
                 let frac_dwh_dwi = 4.0 * halfway_vec.dot(light);
 
                 let color = ctm.brdf(position, normal, light, view) * nl
@@ -673,6 +774,8 @@ impl Material {
                 ctr.evaluate(position, normal, halfway_vec, view, pdf)
             }
             Self::CookTorranceGlass(ctg) => {
+                // The material will mix between a refract and reflection
+                // material based on the fresnel factor.
                 let pdf = Pdf::Beckmann(ctg.alpha2, ReflectType::Reflect);
                 let halfway_vec = pdf.generate(position, normal, view);
 
@@ -758,18 +861,22 @@ impl Material {
     }
 }
 
-fn schlick_dielectric(r0: f64, normal: Vec3, view: Vec3) -> f64 {
+/// Schlick approximation for scalar r0.
+fn schlick_scalar(r0: f64, normal: Vec3, view: Vec3) -> f64 {
     r0 + (1. - r0) * (1. - normal.dot(view)).powi(5)
 }
 
-fn schlick_metallic(r0: Vec3, normal: Vec3, view: Vec3) -> Vec3 {
+/// Schlick approximation for vector r0.
+fn schlick_vec(r0: Vec3, normal: Vec3, view: Vec3) -> Vec3 {
     r0 + (Vec3::new(1., 1., 1.) - r0) * (1. - normal.dot(view)).powi(5)
 }
 
+/// Returns the view vector reflected in the normal.
 fn reflect(normal: Vec3, view: Vec3) -> Vec3 {
     2. * view.dot(normal) * normal - view
 }
 
+/// Returns the view vector refracted by the material in the normal.
 fn refract(normal: Vec3, view: Vec3, ior: f64) -> Option<Vec3> {
     let cos_theta = view.dot(normal);
 
@@ -791,24 +898,28 @@ fn refract(normal: Vec3, view: Vec3, ior: f64) -> Option<Vec3> {
     Some(dir_perp + dir_parallel)
 }
 
+/// A Fresnel coefficient.
 enum Fresnel {
     SchlickDielectric { ior_in: f64, ior_out: f64 },
     SchlickMetallic(Vec3),
 }
 
 impl Fresnel {
+    /// Get the value of the Fresnel coefficient.
     fn value(&self, normal: Vec3, view: Vec3) -> Vec3 {
         match self {
             Fresnel::SchlickDielectric { ior_in, ior_out } => {
                 let r0 = (ior_in - ior_out) / (ior_in + ior_out);
                 let r0 = r0 * r0;
-                let fresnel = schlick_dielectric(r0, normal, view);
+                let fresnel = schlick_scalar(r0, normal, view);
                 Vec3::new(fresnel, fresnel, fresnel)
             }
-            Fresnel::SchlickMetallic(r0) => schlick_metallic(*r0, normal, view),
+            Fresnel::SchlickMetallic(r0) => schlick_vec(*r0, normal, view),
         }
     }
 }
+
+/// A mix-factor for the mix pdf and mix material.
 #[derive(Debug, Copy, Clone)]
 pub enum MixKind {
     Constant(f64),
@@ -816,6 +927,7 @@ pub enum MixKind {
 }
 
 impl MixKind {
+    /// Get the value of the mix factor.
     fn value(&self, _position: Vec3, normal: Vec3, light: Vec3) -> f64 {
         match self {
             MixKind::Constant(factor) => *factor,
@@ -823,7 +935,7 @@ impl MixKind {
                 let r0 = (1. - ior) / (1. + ior);
                 let r0 = r0 * r0;
 
-                schlick_dielectric(r0, normal, light)
+                schlick_scalar(r0, normal, light)
             }
         }
     }
