@@ -9,7 +9,7 @@ pub mod wavefront_obj;
 use vecmath::Vec3;
 
 use geometry::{Axis, AxisAlignedBoundingBox, Hittable, Plane, Sphere, Triangle};
-use material::{Emission, Emitting, Material};
+use material::{Emission, Emitting, Material, ScatteringEvent};
 
 use image::Image;
 
@@ -520,24 +520,22 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32) -> Vec3 {
             let normal = obj.geom.normal(position);
             let view = -1. * r.direction.unit();
 
-            let (color, new_ray) = obj.mat.evaluate(position, normal, view, None);
+            match obj.mat.evaluate(position, normal, view, None) {
+                ScatteringEvent::Scatter { color, ray } => {
+                    light = light + throughput * obj.emission.emit();
 
-            light = light + throughput * obj.emission.emit();
+                    throughput = throughput * color;
 
-            r = match new_ray {
-                Some(r) => r,
-                // If we hit a non-reflecting object we can just return
-                None => return light,
-            };
+                    let p = throughput.x().max(throughput.y()).max(throughput.z());
+                    if rand::random::<f64>() > p {
+                        return light;
+                    }
 
-            throughput = throughput * color;
-
-            let p = throughput.x().max(throughput.y()).max(throughput.z());
-            if rand::random::<f64>() > p {
-                return light;
+                    throughput /= p;
+                    r = ray;
+                }
+                ScatteringEvent::NoScatter => return light,
             }
-
-            throughput /= p;
         } else {
             return light + throughput * s.background(r.direction);
         }

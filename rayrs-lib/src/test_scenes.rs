@@ -1,13 +1,20 @@
 use super::bvh::BvhHeuristic;
 use super::geometry::Axis;
 use super::image::Image;
-use super::material::{Emission, Material};
+use super::material::{
+    CookTorrance, Emission, Fresnel, Glass, LambertianDiffuse, Material, Reflect, Refract,
+};
 use super::vecmath::Vec3;
 use super::wavefront_obj;
 use super::{Camera, Object, Scene};
 
 fn single_sphere(z_near: f64, z_far: f64, hdri: Image, mat: Material) -> (Camera, Scene) {
-    let floor = Material::cook_torrance_metallic(0.5, Vec3::ones() * 0.8);
+    let floor = Material::CookTorrance(CookTorrance::new(
+        Vec3::ones(),
+        0.5,
+        Fresnel::SchlickMetallic(Vec3::ones() * 0.8),
+    ));
+
     let bottom = Object::plane(Axis::Y, -25., 25., -25., 25., 0., floor, Emission::Dark);
 
     let sphere = Object::sphere(1., Vec3::unit_y(), mat, Emission::Dark);
@@ -34,22 +41,31 @@ fn single_sphere(z_near: f64, z_far: f64, hdri: Image, mat: Material) -> (Camera
 }
 
 pub fn copper_single_sphere(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
-    let mat = Material::cook_torrance_metallic(0.05, Vec3::new(0.722, 0.451, 0.2));
+    let mat = Material::CookTorrance(CookTorrance::new(
+        Vec3::ones(),
+        0.05,
+        Fresnel::SchlickMetallic(Vec3::new(0.722, 0.451, 0.2)),
+    ));
     single_sphere(z_near, z_far, hdri, mat)
 }
 
 pub fn glass_single_sphere(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
-    let mat = Material::glass(1.45, Vec3::ones() * 0.8);
+    let mat = Material::Glass(Glass::new(Vec3::ones() * 0.8, 1.45));
     single_sphere(z_near, z_far, hdri, mat)
 }
 
-pub fn cook_torrance_glass_single_sphere(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
-    let mat = Material::cook_torrance_glass(0.05, 1.45, Vec3::ones() * 0.8);
-    single_sphere(z_near, z_far, hdri, mat)
-}
+// pub fn cook_torrance_glass_single_sphere(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
+//     let mat = MaterialType::cook_torrance_glass(0.05, 1.45, Vec3::ones() * 0.8);
+//     single_sphere(z_near, z_far, hdri, mat)
+// }
 
 fn suzanne(z_near: f64, z_far: f64, hdri: Image, mat: Material) -> (Camera, Scene) {
-    let floor = Material::cook_torrance_metallic(0.5, Vec3::ones() * 0.8);
+    let floor = Material::CookTorrance(CookTorrance::new(
+        Vec3::ones(),
+        0.5,
+        Fresnel::SchlickMetallic(Vec3::ones() * 0.8),
+    ));
+
     let bottom = Object::plane(Axis::Y, -25., 25., -25., 25., 0., floor, Emission::Dark);
 
     let suzanne = wavefront_obj::load_obj_file("suzanne.obj").unwrap();
@@ -79,17 +95,27 @@ fn suzanne(z_near: f64, z_far: f64, hdri: Image, mat: Material) -> (Camera, Scen
 }
 
 pub fn copper_suzanne(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
-    let mat = Material::cook_torrance_metallic(0.05, Vec3::new(0.722, 0.451, 0.2));
+    let mat = Material::CookTorrance(CookTorrance::new(
+        Vec3::ones(),
+        0.05,
+        Fresnel::SchlickMetallic(Vec3::new(0.722, 0.451, 0.2)),
+    ));
+
     suzanne(z_near, z_far, hdri, mat)
 }
 
 pub fn glass_suzanne(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
-    let mat = Material::glass(1.45, Vec3::ones() * 0.8);
+    let mat = Material::Glass(Glass::new(Vec3::ones() * 0.8, 1.45));
     suzanne(z_near, z_far, hdri, mat)
 }
 
 fn multiple_spheres(z_near: f64, z_far: f64, hdri: Image, mats: Vec<Material>) -> (Camera, Scene) {
-    let floor = Material::cook_torrance_metallic(0.5, Vec3::ones() * 0.8);
+    let floor = Material::CookTorrance(CookTorrance::new(
+        Vec3::ones(),
+        0.5,
+        Fresnel::SchlickMetallic(Vec3::ones() * 0.8),
+    ));
+
     let bottom = Object::plane(Axis::Y, -25., 25., -25., 25., 0., floor, Emission::Dark);
     let len = mats.len() as isize;
     let spheres: Vec<_> = mats
@@ -129,7 +155,13 @@ fn multiple_spheres(z_near: f64, z_far: f64, hdri: Image, mats: Vec<Material>) -
 
 pub fn cook_torrance_spheres_metallic(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
     let mats = (0..7)
-        .map(|i| Material::cook_torrance_metallic(0.01 * (4 * i + 1) as f64, Vec3::ones() * 0.8))
+        .map(|i| {
+            Material::CookTorrance(CookTorrance::new(
+                Vec3::ones(),
+                0.01 * (4 * i + 1) as f64,
+                Fresnel::SchlickMetallic(Vec3::ones() * 0.8),
+            ))
+        })
         .collect();
     multiple_spheres(z_near, z_far, hdri, mats)
 }
@@ -137,36 +169,52 @@ pub fn cook_torrance_spheres_metallic(z_near: f64, z_far: f64, hdri: Image) -> (
 pub fn cook_torrance_spheres_plastic(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
     let mats = (0..7)
         .map(|i| {
-            Material::cook_torrance_dielectric(0.01 * (4 * i + 1) as f64, 1.45, Vec3::ones() * 0.8)
+            Material::CookTorrance(CookTorrance::new(
+                Vec3::ones() * 0.8,
+                0.01 * (4 * i + 1) as f64,
+                Fresnel::SchlickDielectric(1.45),
+            ))
         })
         .collect();
 
     multiple_spheres(z_near, z_far, hdri, mats)
 }
 
-pub fn cook_torrance_spheres_frosted_glass(
-    z_near: f64,
-    z_far: f64,
-    hdri: Image,
-) -> (Camera, Scene) {
-    let mats = (0..7)
-        .map(|i| Material::cook_torrance_glass(0.01 * (4 * i + 1) as f64, 1.45, Vec3::ones() * 0.8))
-        .collect();
-    multiple_spheres(z_near, z_far, hdri, mats)
-}
+// pub fn cook_torrance_spheres_frosted_glass(
+//     z_near: f64,
+//     z_far: f64,
+//     hdri: Image,
+// ) -> (Camera, Scene) {
+//     let mats = (0..7)
+//         .map(|i| {
+//             MaterialType::cook_torrance_glass(0.01 * (4 * i + 1) as f64, 1.45, Vec3::ones() * 0.8)
+//         })
+//         .collect();
+//     multiple_spheres(z_near, z_far, hdri, mats)
+// }
 
 pub fn material_test(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
     let mats = vec![
-        Material::diffuse(Vec3::ones() * 0.8),
-        Material::cook_torrance_metallic(0.05, Vec3::ones() * 0.8),
-        Material::cook_torrance_dielectric(0.05, 1.45, Vec3::ones() * 0.8),
-        Material::cook_torrance_refract(0.05, 1.45, Vec3::ones() * 0.8),
-        Material::cook_torrance_glass(0.05, 1.45, Vec3::ones()),
-        Material::mirror(Vec3::ones() * 0.8),
-        Material::refract(1.45, Vec3::ones() * 0.8),
-        Material::glass(1.45, Vec3::ones() * 0.8),
+        Material::LambertianDiffuse(LambertianDiffuse::new(Vec3::ones() * 0.8)),
+        Material::CookTorrance(CookTorrance::new(
+            Vec3::ones(),
+            0.05,
+            Fresnel::SchlickMetallic(Vec3::ones() * 0.8),
+        )),
+        Material::CookTorrance(CookTorrance::new(
+            Vec3::ones() * 0.8,
+            0.05,
+            Fresnel::SchlickDielectric(1.45),
+        )),
+        Material::Reflect(Reflect::new(Vec3::ones() * 0.8)),
+        Material::Refract(Refract::new(Vec3::ones() * 0.8, 1.45)),
+        Material::Glass(Glass::new(Vec3::ones() * 0.8, 1.45)),
     ];
-    let floor = Material::cook_torrance_metallic(0.5, Vec3::ones() * 0.8);
+    let floor = Material::CookTorrance(CookTorrance::new(
+        Vec3::ones(),
+        0.5,
+        Fresnel::SchlickMetallic(Vec3::ones() * 0.8),
+    ));
 
     let bottom = Object::plane(Axis::Y, -25., 25., -25., 25., 0., floor, Emission::Dark);
     let len = mats.len() as isize;
