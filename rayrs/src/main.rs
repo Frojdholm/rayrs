@@ -24,7 +24,12 @@ const SPP: u32 = 2000;
 ///
 /// The function generates an image using the hdri and test scene. The result
 /// is saved as `outbase.png` and `outbase.hdr`.
-pub fn generate_image<P, F>(hdri_path: P, outbase: &str, test_scene: F) -> Result<(), ImageError>
+pub fn generate_image<P, F>(
+    hdri_path: P,
+    outbase: &str,
+    spp: u32,
+    test_scene: F,
+) -> Result<(), ImageError>
 where
     P: AsRef<Path>,
     F: FnOnce(f64, f64, Image) -> (Camera, Scene),
@@ -58,7 +63,7 @@ where
             for j in 0..image.width() {
                 for i in 0..image.height() {
                     let mut pixel = Vec3::new(0., 0., 0.);
-                    for _ in 0..SPP {
+                    for _ in 0..spp {
                         pixel += rayrs_lib::radiance(
                             &s,
                             c.generate_primary_ray(
@@ -68,7 +73,7 @@ where
                             50,
                         );
                     }
-                    image.set_pixel(i, j, pixel / SPP as f64);
+                    image.set_pixel(i, j, pixel / spp as f64);
                 }
             }
             image
@@ -101,38 +106,53 @@ where
     encoder.encode(&pixels, width, height)
 }
 
-fn main() -> Result<(), ImageError> {
-    let mut args = env::args();
-    if args.len() != 2 {
-        eprintln!("Usage: rayrs hdri_path");
-        process::exit(1);
+fn parse_commandline(mut args: env::Args) -> Result<(String, u32), &'static str> {
+    if args.len() < 2 {
+        return Err("Usage: rayrs hdri_path [spp]");
     }
-    // Skip program name
+
     args.next();
     let hdri = args.next().unwrap();
-    // generate_image(hdri, "copper_sphere", test_scenes::copper_single_sphere)?;
-    // generate_image(hdri, "glass_sphere", test_scenes::glass_single_sphere)?;
+    let spp = match args.next() {
+        Some(spp) => spp.parse().unwrap_or_else(|_| SPP),
+        None => SPP,
+    };
+
+    Ok((hdri, spp))
+}
+
+fn main() -> Result<(), ImageError> {
+    let (hdri, spp) = parse_commandline(env::args()).unwrap_or_else(|v| {
+        eprintln!("{}", v);
+        process::exit(1)
+    });
+    // generate_image(hdri, "copper_sphere", spp, test_scenes::copper_single_sphere)?;
+    // generate_image(hdri, "glass_sphere", spp, test_scenes::glass_single_sphere)?;
     // generate_image(
     //     hdri,
     //     "spheres_metallic",
+    //     spp,
     //     test_scenes::cook_torrance_spheres_metallic,
     // )?;
     // generate_image(
     //     hdri,
     //     "spheres_plastic",
+    //     spp,
     //     test_scenes::cook_torrance_spheres_plastic,
     // )?;
-    // generate_image(hdri, "copper_suzanne", test_scenes::copper_suzanne)?;
-    // generate_image(hdri, "glass_suzanne", test_scenes::glass_suzanne)?;
+    // generate_image(hdri, "copper_suzanne", spp, test_scenes::copper_suzanne)?;
+    // generate_image(hdri, "glass_suzanne", spp, test_scenes::glass_suzanne)?;
     // generate_image(
     //     hdri,
     //     "cook_torrance_glass_sphere",
+    //     spp,
     //     test_scenes::cook_torrance_glass_single_sphere,
     // )?;
     // generate_image(
     //     hdri,
     //     "cook_torrance_spheres_frosted_glass",
+    //     spp,
     //     test_scenes::cook_torrance_spheres_frosted_glass,
     // )?;
-    generate_image(hdri, "material_test", test_scenes::material_test)
+    generate_image(hdri, "material_test", spp, test_scenes::material_test)
 }
