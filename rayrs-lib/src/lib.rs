@@ -6,7 +6,7 @@ pub mod test_scenes;
 pub mod vecmath;
 pub mod wavefront_obj;
 
-use vecmath::Vec3;
+use vecmath::{Unit, Vec3};
 
 use geometry::{Axis, AxisAlignedBoundingBox, Hittable, Plane, Sphere, Triangle};
 use material::{Emission, Emitting, Material, ScatteringEvent};
@@ -51,8 +51,8 @@ pub struct Camera {
     width: f64,
     height: f64,
     ppc: u32,
-    e_x: Vec3,
-    e_y: Vec3,
+    e_x: Unit<Vec3>,
+    e_y: Unit<Vec3>,
     z: Vec3,
 }
 
@@ -74,8 +74,8 @@ impl Camera {
         let ppc = ((ppi as f64) * 2.54).round() as u32;
 
         let z = (lookat - origin).unit();
-        let x = up.cross(z).unit();
-        let y = z.cross(x).unit();
+        let x = up.cross(z.as_vec()).unit();
+        let y = z.as_vec().cross(x.as_vec()).unit();
 
         Camera {
             origin,
@@ -87,7 +87,7 @@ impl Camera {
             ppc,
             e_x: x,
             e_y: y,
-            z: (width / (fov.to_radians() / 2.).tan()) * z,
+            z: (width / (fov.to_radians() / 2.).tan()) * z.as_vec(),
         }
     }
 
@@ -106,7 +106,10 @@ impl Camera {
         let x: f64 = (j + rand::random::<f64>()) / (self.ppc as f64) - self.width / 2.;
         let y: f64 = (i + rand::random::<f64>()) / (self.ppc as f64) - self.height / 2.;
 
-        Ray::new(self.origin, self.z + x * self.e_x + y * self.e_y)
+        Ray::new(
+            self.origin,
+            self.z + x * self.e_x.as_vec() + y * self.e_y.as_vec(),
+        )
     }
 }
 
@@ -368,7 +371,7 @@ impl Scene {
     // }
 
     pub fn background(&self, dir: Vec3) -> Vec3 {
-        let dir = dir.unit();
+        let dir = dir.unit().as_vec();
 
         let phi = dir.z().atan2(dir.x()) + PI;
         let theta = dir.y().acos();
@@ -398,7 +401,7 @@ impl Scene {
     }
 
     pub fn sky(&self, dir: Vec3) -> Vec3 {
-        let y = 0.5 * dir.unit().y() + 1.;
+        let y = 0.5 * dir.unit().as_vec().y() + 1.;
         return 2.0 * (y * Vec3::new(0.5, 0.5, 1.0) + (1. - y) * Vec3::ones());
     }
 }
@@ -537,7 +540,7 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32) -> Vec3 {
         {
             let position = r.point(t);
             let normal = obj.geom.normal(position);
-            let view = -1. * r.direction.unit();
+            let view = (-1. * r.direction).unit();
 
             match obj.mat.evaluate(position, normal, view, None) {
                 ScatteringEvent::Scatter { color, ray } => {

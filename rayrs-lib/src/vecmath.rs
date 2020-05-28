@@ -5,6 +5,24 @@ pub struct Vector<T> {
     data: [T; 3],
 }
 
+/// A wrapper type for unit vectors.
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub struct Unit<T>(T);
+
+impl<T> Unit<T> {
+    /// Construct a new `Unit<T>`.
+    ///
+    /// The programmer assures that the `T` passed as vec is unit.
+    pub fn new(vec: T) -> Unit<T> {
+        Unit(vec)
+    }
+
+    /// Use this vector as a normal vector.
+    pub fn as_vec(self) -> T {
+        self.0
+    }
+}
+
 pub type Vec3 = Vector<f64>;
 
 impl<T: Copy> Vector<T> {
@@ -42,16 +60,16 @@ impl Vector<f64> {
         Vector { data: [0., 0., 0.] }
     }
 
-    pub fn unit_x() -> Vector<f64> {
-        Vector { data: [1., 0., 0.] }
+    pub fn unit_x() -> Unit<Vector<f64>> {
+        Unit(Vector { data: [1., 0., 0.] })
     }
 
-    pub fn unit_y() -> Vector<f64> {
-        Vector { data: [0., 1., 0.] }
+    pub fn unit_y() -> Unit<Vector<f64>> {
+        Unit(Vector { data: [0., 1., 0.] })
     }
 
-    pub fn unit_z() -> Vector<f64> {
-        Vector { data: [0., 0., 1.] }
+    pub fn unit_z() -> Unit<Vector<f64>> {
+        Unit(Vector { data: [0., 0., 1.] })
     }
 
     pub fn is_zeros(&self) -> bool {
@@ -84,18 +102,19 @@ impl Vector<f64> {
         self.mag_2().sqrt()
     }
 
-    pub fn unit(self) -> Vector<f64> {
-        self / self.mag()
+    pub fn unit(self) -> Unit<Vector<f64>> {
+        Unit(self / self.mag())
     }
 
-    pub fn orthonormal_basis(normal: Vector<f64>) -> (Vector<f64>, Vector<f64>) {
+    pub fn orthonormal_basis(normal: Unit<Vector<f64>>) -> (Unit<Vector<f64>>, Unit<Vector<f64>>) {
+        let normal = normal.as_vec();
         let temp = if normal.data[0].abs() > 0.9 {
             Vector::new(0., 1., 0.)
         } else {
             Vector::new(1., 0., 0.)
         };
         let e1 = temp.cross(normal).unit();
-        let e2 = normal.cross(e1).unit();
+        let e2 = normal.cross(e1.as_vec()).unit();
         (e1, e2)
     }
 

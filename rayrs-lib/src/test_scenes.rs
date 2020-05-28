@@ -18,14 +18,14 @@ fn single_sphere(z_near: f64, z_far: f64, hdri: Image, mat: Material) -> (Camera
 
     let bottom = Object::plane(Axis::Y, -25., 25., -25., 25., 0., floor, Emission::Dark);
 
-    let sphere = Object::sphere(1., Vec3::unit_y(), mat, Emission::Dark);
+    let sphere = Object::sphere(1., Vec3::unit_y().as_vec(), mat, Emission::Dark);
     let objects = vec![bottom, sphere];
 
     (
         Camera::new(
             Vec3::new(0., 5., 10.),
-            Vec3::unit_y(),
-            Vec3::unit_y(),
+            Vec3::unit_y().as_vec(),
+            Vec3::unit_y().as_vec(),
             50.,
             1920. / 1000.,
             1080. / 1000.,
@@ -78,8 +78,8 @@ fn suzanne(z_near: f64, z_far: f64, hdri: Image, mat: Material) -> (Camera, Scen
     (
         Camera::new(
             Vec3::new(0., 5., 10.),
-            Vec3::unit_y(),
-            Vec3::unit_y(),
+            Vec3::unit_y().as_vec(),
+            Vec3::unit_y().as_vec(),
             50.,
             1920. / 1000.,
             1080. / 1000.,
@@ -125,7 +125,7 @@ fn multiple_spheres(z_near: f64, z_far: f64, hdri: Image, mats: Vec<Material>) -
         .map(|(i, mat)| {
             Object::sphere(
                 1.,
-                Vec3::unit_y() + Vec3::new(2.2 * (i as isize - len / 2) as f64, 0., 0.),
+                Vec3::unit_y().as_vec() + Vec3::new(2.2 * (i as isize - len / 2) as f64, 0., 0.),
                 mat,
                 Emission::Dark,
             )
@@ -137,8 +137,8 @@ fn multiple_spheres(z_near: f64, z_far: f64, hdri: Image, mats: Vec<Material>) -
     (
         Camera::new(
             Vec3::new(0., 10., 20.),
-            Vec3::unit_y(),
-            Vec3::unit_y(),
+            Vec3::unit_y().as_vec(),
+            Vec3::unit_y().as_vec(),
             72.,
             1920. / 1000.,
             400. / 1000.,
@@ -223,7 +223,7 @@ pub fn material_test(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
         .map(|(i, mat)| {
             Object::sphere(
                 1.,
-                Vec3::unit_y() + Vec3::new(2.2 * (i as isize - len / 2) as f64, 0., 0.),
+                Vec3::unit_y().as_vec() + Vec3::new(2.2 * (i as isize - len / 2) as f64, 0., 0.),
                 mat,
                 Emission::Dark,
             )
@@ -235,8 +235,8 @@ pub fn material_test(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
     (
         Camera::new(
             Vec3::new(0., 3., 20.),
-            Vec3::unit_y(),
-            Vec3::unit_y(),
+            Vec3::unit_y().as_vec(),
+            Vec3::unit_y().as_vec(),
             90.,
             1920. / 1000.,
             250. / 1000.,

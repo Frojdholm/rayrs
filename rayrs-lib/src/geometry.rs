@@ -1,4 +1,4 @@
-use super::vecmath::Vec3;
+use super::vecmath::{Unit, Vec3};
 use super::Object;
 use super::Ray;
 
@@ -7,7 +7,7 @@ use std::ops::Range;
 
 pub trait Hittable {
     fn intersect(&self, ray: Ray) -> Option<f64>;
-    fn normal(&self, p: Vec3) -> Vec3;
+    fn normal(&self, p: Vec3) -> Unit<Vec3>;
     fn area(&self) -> f64;
     fn sample(&self) -> Vec3;
     fn bbox(&self) -> AxisAlignedBoundingBox;
@@ -27,8 +27,8 @@ impl<T: Hittable> Hittable for Flipped<T> {
         self.0.intersect(ray)
     }
 
-    fn normal(&self, p: Vec3) -> Vec3 {
-        -1. * self.0.normal(p)
+    fn normal(&self, p: Vec3) -> Unit<Vec3> {
+        Unit::new(-1. * self.0.normal(p).as_vec())
     }
 
     fn area(&self) -> f64 {
@@ -87,7 +87,7 @@ impl Hittable for Sphere {
         }
     }
 
-    fn normal(&self, p: Vec3) -> Vec3 {
+    fn normal(&self, p: Vec3) -> Unit<Vec3> {
         (p - self.origin).unit()
     }
 
@@ -199,14 +199,14 @@ impl Hittable for Plane {
         }
     }
 
-    fn normal(&self, _p: Vec3) -> Vec3 {
+    fn normal(&self, _p: Vec3) -> Unit<Vec3> {
         match &self.axis {
-            Axis::X => Vec3::new(1., 0., 0.),
-            Axis::XRev => Vec3::new(-1., 0., 0.),
-            Axis::Y => Vec3::new(0., 1., 0.),
-            Axis::YRev => Vec3::new(0., -1., 0.),
-            Axis::Z => Vec3::new(0., 0., 1.),
-            Axis::ZRev => Vec3::new(0., 0., -1.),
+            Axis::X => Vec3::unit_x(),
+            Axis::XRev => Unit::new(Vec3::new(-1., 0., 0.)),
+            Axis::Y => Vec3::unit_y(),
+            Axis::YRev => Unit::new(Vec3::new(0., -1., 0.)),
+            Axis::Z => Vec3::unit_z(),
+            Axis::ZRev => Unit::new(Vec3::new(0., 0., -1.)),
         }
     }
 
@@ -239,7 +239,7 @@ pub struct Triangle {
     p3: Vec3,
     e1: Vec3,
     e2: Vec3,
-    normal: Vec3,
+    normal: Unit<Vec3>,
     area: f64,
 }
 
@@ -280,7 +280,7 @@ impl Hittable for Triangle {
         }
     }
 
-    fn normal(&self, _p: Vec3) -> Vec3 {
+    fn normal(&self, _p: Vec3) -> Unit<Vec3> {
         self.normal
     }
 
