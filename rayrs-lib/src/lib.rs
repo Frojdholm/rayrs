@@ -373,9 +373,28 @@ impl Scene {
         let phi = dir.z().atan2(dir.x()) + PI;
         let theta = dir.y().acos();
 
-        let x = phi / (2. * PI) * self.hdri.width() as f64;
-        let y = theta / PI * self.hdri.height() as f64;
-        self.hdri.pixel(y.floor() as usize, x.floor() as usize)
+        let x = phi / (2. * PI) * (self.hdri.width() - 1) as f64;
+        let y = theta / PI * (self.hdri.height() - 1) as f64;
+
+        let x_f = x.floor();
+        let x_c = x.ceil();
+        let y_f = y.floor();
+        let y_c = y.ceil();
+
+        let i = y_f as usize;
+        let j = x_f as usize;
+
+        let f = [
+            self.hdri.pixel(i, j),
+            self.hdri.pixel(i + 1, j),
+            self.hdri.pixel(i, j + 1),
+            self.hdri.pixel(i + 1, j + 1),
+        ];
+
+        f[0] * (x_c - x) * (y_c - y)
+            + f[1] * (x_c - x) * (y - y_f)
+            + f[2] * (x - x_f) * (y_c - y)
+            + f[3] * (x - x_f) * (y - y_f)
     }
 
     pub fn sky(&self, dir: Vec3) -> Vec3 {
