@@ -139,7 +139,7 @@ fn main() -> Result<(), ImageError> {
     //     "spheres_plastic",
     //     spp,
     //     test_scenes::cook_torrance_spheres_plastic,
-    // )?;
+    // )
     // generate_image(hdri, "copper_suzanne", spp, test_scenes::copper_suzanne)?;
     // generate_image(hdri, "glass_suzanne", spp, test_scenes::glass_suzanne)?;
     // generate_image(
