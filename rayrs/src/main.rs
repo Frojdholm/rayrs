@@ -126,33 +126,44 @@ fn main() -> Result<(), ImageError> {
         eprintln!("{}", v);
         process::exit(1)
     });
-    // generate_image(hdri, "copper_sphere", spp, test_scenes::copper_single_sphere)?;
-    // generate_image(hdri, "glass_sphere", spp, test_scenes::glass_single_sphere)?;
     // generate_image(
-    //     hdri,
+    //     &hdri,
+    //     "copper_sphere",
+    //     spp,
+    //     test_scenes::copper_single_sphere,
+    // )?;
+    // generate_image(&hdri, "glass_sphere", spp, test_scenes::glass_single_sphere)?;
+    // generate_image(
+    //     &hdri,
     //     "spheres_metallic",
     //     spp,
     //     test_scenes::cook_torrance_spheres_metallic,
     // )?;
     // generate_image(
-    //     hdri,
+    //     &hdri,
     //     "spheres_plastic",
     //     spp,
     //     test_scenes::cook_torrance_spheres_plastic,
-    // )
-    // generate_image(hdri, "copper_suzanne", spp, test_scenes::copper_suzanne)?;
-    // generate_image(hdri, "glass_suzanne", spp, test_scenes::glass_suzanne)?;
+    // )?;
+    // generate_image(&hdri, "copper_suzanne", spp, test_scenes::copper_suzanne)?;
+    // generate_image(&hdri, "glass_suzanne", spp, test_scenes::glass_suzanne)?;
     // generate_image(
-    //     hdri,
+    //     &hdri,
     //     "cook_torrance_glass_sphere",
     //     spp,
     //     test_scenes::cook_torrance_glass_single_sphere,
     // )?;
     // generate_image(
-    //     hdri,
+    //     &hdri,
     //     "cook_torrance_spheres_frosted_glass",
     //     spp,
     //     test_scenes::cook_torrance_spheres_frosted_glass,
+    // )?;
+    // generate_image(
+    //     &hdri,
+    //     "cook_torrance_spheres_cook_torrance_refract",
+    //     spp,
+    //     test_scenes::cook_torrance_spheres_cook_torrance_refract,
     // )?;
     generate_image(hdri, "material_test", spp, test_scenes::material_test)
 }

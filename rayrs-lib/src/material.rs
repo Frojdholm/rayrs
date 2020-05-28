@@ -18,6 +18,7 @@ pub enum Material {
     Refract(Refract),
     Glass(Glass),
     CookTorrance(CookTorrance),
+    CookTorranceRefract(CookTorranceRefract),
     CookTorranceGlass(CookTorranceGlass),
     Plastic(Plastic),
     NoReflect,
@@ -37,6 +38,7 @@ impl Material {
             Self::Refract(r) => r.scatter(position, normal, view, pdf),
             Self::Glass(g) => g.scatter(position, normal, view, pdf),
             Self::CookTorrance(ct) => ct.scatter(position, normal, view, pdf),
+            Self::CookTorranceRefract(ctr) => ctr.scatter(position, normal, view, pdf),
             Self::CookTorranceGlass(ctg) => ctg.scatter(position, normal, view, pdf),
             Self::Plastic(p) => p.scatter(position, normal, view, pdf),
             Self::NoReflect => ScatteringEvent::NoScatter,
@@ -125,6 +127,12 @@ pub struct CookTorrance {
     alpha2: f64,
     fresnel: Fresnel,
     color: Vec3,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CookTorranceRefract {
+    ior: f64,
+    cook_torrance: CookTorrance,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -239,6 +247,8 @@ impl Bsdf for Refract {
             ScatteringDirection::Exiting
         };
 
+        let normal = direction.normal(normal);
+
         let light = match refract(normal, view, direction.ior_ratio(self.ior)) {
             Some(l) => l,
             None => return ScatteringEvent::NoScatter,
@@ -319,6 +329,47 @@ impl Bsdf for CookTorrance {
     }
 }
 
+impl Bsdf for CookTorranceRefract {
+    fn scatter(
+        &self,
+        position: Vec3,
+        normal: Unit<Vec3>,
+        view: Unit<Vec3>,
+        _pdf: Option<Pdf>,
+    ) -> ScatteringEvent {
+        let direction = if normal.as_vec().dot(view.as_vec()) > 0. {
+            ScatteringDirection::Entering
+        } else {
+            ScatteringDirection::Exiting
+        };
+        let normal = direction.normal(normal);
+
+        let ior_ratio = direction.ior_ratio(self.ior);
+
+        let pdf = MicrofacetDistribution::Beckmann(self.cook_torrance.alpha2);
+        let pdf_res = pdf.generate(normal);
+
+        let halfway_vec = pdf_res.vector;
+        let halfway_vec = direction.normal(halfway_vec);
+
+        let light = match refract(halfway_vec, view, ior_ratio) {
+            Some(l) => l,
+            None => return ScatteringEvent::NoScatter,
+        };
+
+        self.cook_torrance.evaluate_refraction(
+            position,
+            normal,
+            halfway_vec,
+            view,
+            light,
+            pdf_res.value,
+            direction,
+            ior_ratio,
+        )
+    }
+}
+
 impl Bsdf for CookTorranceGlass {
     fn scatter(
         &self,
@@ -332,20 +383,21 @@ impl Bsdf for CookTorranceGlass {
 
         let halfway_vec = pdf_res.vector;
 
-        let cos_theta = halfway_vec.as_vec().dot(view.as_vec());
-
-        let direction = if cos_theta > 0. {
+        let direction = if normal.as_vec().dot(view.as_vec()) > 0. {
             ScatteringDirection::Entering
         } else {
             ScatteringDirection::Exiting
         };
 
-        let ior_ratio = direction.ior_ratio(self.ior);
-
         // Flip the halfway vector and normal to be in the same hemisphere as
         // the view vector.
         let halfway_vec = direction.normal(halfway_vec);
+
         let normal = direction.normal(normal);
+
+        let cos_theta = halfway_vec.as_vec().dot(view.as_vec());
+
+        let ior_ratio = direction.ior_ratio(self.ior);
 
         let sin2_theta = 1. - cos_theta * cos_theta;
 
@@ -542,6 +594,10 @@ impl CookTorrance {
         light: Unit<Vec3>,
         pdf: f64,
     ) -> ScatteringEvent {
+        if halfway_vec.as_vec().dot(view.as_vec()) < 0. {
+            return ScatteringEvent::NoScatter;
+        }
+
         let nl = normal.as_vec().dot(light.as_vec());
 
         // If the light vector points inside the object we terminate
@@ -550,7 +606,7 @@ impl CookTorrance {
         }
 
         // Conversion factor for going from a distribution over halfway vectors
-        // to a distribution over view vectors.
+        // to a distribution over light vectors.
         let frac_dwh_dwi = 4.0 * halfway_vec.as_vec().dot(light.as_vec());
 
         let color = self.brdf(position, normal, light, view) * nl;
@@ -577,6 +633,10 @@ impl CookTorrance {
         direction: ScatteringDirection,
         ior_ratio: f64,
     ) -> ScatteringEvent {
+        if halfway_vec.as_vec().dot(view.as_vec()) < 0. {
+            return ScatteringEvent::NoScatter;
+        }
+
         let nl = normal.as_vec().dot(light.as_vec());
 
         // If the light vector points inside the object we terminate
@@ -588,12 +648,17 @@ impl CookTorrance {
         let hv = halfway_vec.as_vec().dot(view.as_vec()).abs();
 
         // Conversion factor for going from a distribution over halfway vectors
-        // to a distribution over view vectors.
+        // to a distribution over light vectors.
         let denom = ior_ratio * hv + hl;
-        let dwh_dwi = denom * denom;
+        let denom = denom * denom;
+        let dwh_dwi = hl / denom;
 
-        let color = self.btdf(position, normal, light, view, direction, 1.) * nl.abs();
-        let color = color / pdf / dwh_dwi;
+        let color = self.btdf(position, normal, light, view, direction, 1.) * nl.abs()
+        // TODO: Figure out if ior_ratio^2 should really be here..
+        // The reasoning is that we are transfering importance so we need the
+        // eta^2 normalization factor to get the adjoint BTDF.
+            / (ior_ratio * ior_ratio);
+        let color = color / (pdf * dwh_dwi);
 
         if color.is_zeros() {
             ScatteringEvent::NoScatter
@@ -602,6 +667,21 @@ impl CookTorrance {
                 color,
                 ray: Ray::new(position, light.as_vec()),
             }
+        }
+    }
+}
+
+impl CookTorranceRefract {
+    pub fn new(color: Vec3, alpha: f64, ior: f64) -> CookTorranceRefract {
+        assert!(color.xyz_in_range_inclusive(0., 1.));
+        assert!(alpha > 0.);
+        assert!(alpha.is_finite());
+        assert!(ior > 0.);
+        assert!(ior.is_finite());
+
+        CookTorranceRefract {
+            ior,
+            cook_torrance: CookTorrance::new(color, alpha, Fresnel::SchlickDielectric(ior)),
         }
     }
 }
@@ -629,8 +709,9 @@ impl Plastic {
     /// ```
     /// let plastic = Plastic::new(Vec3::ones(), 0.05, 1.45)
     /// ```
-    pub fn new(color: Vec3, alpha: f64, ior: f64) -> Plastic {
+    pub fn new(color: Vec3, spec_color: Vec3, alpha: f64, ior: f64) -> Plastic {
         assert!(color.xyz_in_range_inclusive(0., 1.));
+        assert!(spec_color.xyz_in_range_inclusive(0., 1.));
         assert!(alpha > 0.);
         assert!(alpha.is_finite());
         assert!(ior > 0.);
@@ -638,7 +719,7 @@ impl Plastic {
 
         Plastic {
             ior,
-            cook_torrance: CookTorrance::new(color, alpha, Fresnel::SchlickDielectric(ior)),
+            cook_torrance: CookTorrance::new(spec_color, alpha, Fresnel::SchlickDielectric(ior)),
             diffuse: LambertianDiffuse::new(color),
         }
     }
@@ -911,6 +992,7 @@ impl MicrofacetDistribution {
 }
 
 /// Scattering direction for a transmission event.
+#[derive(Debug, Clone, Copy)]
 enum ScatteringDirection {
     /// Ray entering the object.
     Entering,
@@ -1028,7 +1110,7 @@ impl Brdf for CookTorrance {
         self.color
             * self
                 .fresnel
-                .value(normal, view, ScatteringDirection::Entering)
+                .value(halfway_vec, view, ScatteringDirection::Entering)
             * beckmann
             * geometric_factor
             / (4.0 * nv * nl)
@@ -1083,9 +1165,6 @@ impl Btdf for CookTorrance {
         let nv = normal.as_vec().dot(view.as_vec()).abs();
         let nl = normal.as_vec().dot(light.as_vec()).abs();
 
-        // Flip the normal so it points in the same direction as the view
-        // vector and calculate the ratio of IORs.
-        let normal = direction.normal(normal);
         let ior_self = match self.fresnel {
             Fresnel::SchlickDielectric(ior) => ior,
             Fresnel::SchlickMetallic(_) => panic!("A metallic CookTorrance cannot transmit"),
@@ -1094,6 +1173,14 @@ impl Btdf for CookTorrance {
         let ior_ratio = direction.ior_ratio(ior_self);
 
         let halfway_vec = light.as_vec() + ior_ratio * view.as_vec();
+
+        // The above procedure yields a vector proportional to the halfway
+        // vector, but we might have to flip it in the correct direction.
+        let halfway_vec = if halfway_vec.dot(view.as_vec()) > 0. {
+            halfway_vec
+        } else {
+            -1. * halfway_vec
+        };
 
         if nv == 0.0 || nl == 0.0 {
             return Vec3::zeros();
@@ -1105,7 +1192,10 @@ impl Btdf for CookTorrance {
 
         let halfway_vec = halfway_vec.unit();
 
+        // Use absolute value to force halfway_vec and normal to be in the same
+        // hemisphere.
         let nh = normal.as_vec().dot(halfway_vec.as_vec());
+
         let theta_h = nh.acos();
 
         let tan_theta_h = theta_h.tan();
@@ -1115,23 +1205,33 @@ impl Btdf for CookTorrance {
         }
 
         let beckmann =
-            (-tan_theta_h * tan_theta_h / (self.alpha2)).exp() / (PI * self.alpha2 * nh.powi(4));
+            (-tan_theta_h * tan_theta_h / self.alpha2).exp() / (PI * self.alpha2 * nh.powi(4));
 
-        let hv = halfway_vec.as_vec().dot(view.as_vec()).abs();
         let hl = halfway_vec.as_vec().dot(light.as_vec()).abs();
+        let hv = halfway_vec.as_vec().dot(view.as_vec()).abs();
 
-        let geometric_factor = (2.0 * nh * nv / hv).min((2.0 * nh * nl / hl).min(1.));
+        // TODO: Figure out if hv should be in denominator of both.
+        let geometric_factor = (2.0 * nh * nv / hv).min((2.0 * nh * nl / hv).min(1.));
 
         let denom = ior_ratio * hv + hl;
-        let denom = denom * denom * nv * nl;
+        let denom = denom * denom;
+
+        let norm_fac = hv * hl / (nv * nl);
+
+        let fresnel = self.fresnel.value(halfway_vec, view, direction);
+
+        assert!(beckmann > 0.);
+        assert!(geometric_factor > 0.);
+        assert!(fresnel.xyz_in_range_inclusive(0., 1.), dbg!(fresnel));
 
         self.color
-            * (Vec3::ones() - self.fresnel.value(normal, view, direction))
+            * (Vec3::ones() - fresnel)
             * beckmann
             * geometric_factor
+            * norm_fac
+            * ior_ratio
+            * ior_ratio
             / denom
-            * hv
-            * hl
     }
 
     fn pdf(&self) -> Pdf {
