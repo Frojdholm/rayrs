@@ -2,7 +2,8 @@ use super::bvh::BvhHeuristic;
 use super::geometry::Axis;
 use super::image::Image;
 use super::material::{
-    CookTorrance, Emission, Fresnel, Glass, LambertianDiffuse, Material, Reflect, Refract,
+    CookTorrance, CookTorranceGlass, Emission, Fresnel, Glass, LambertianDiffuse, Material,
+    Plastic, Reflect, Refract,
 };
 use super::vecmath::Vec3;
 use super::wavefront_obj;
@@ -169,10 +170,10 @@ pub fn cook_torrance_spheres_metallic(z_near: f64, z_far: f64, hdri: Image) -> (
 pub fn cook_torrance_spheres_plastic(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
     let mats = (0..7)
         .map(|i| {
-            Material::CookTorrance(CookTorrance::new(
+            Material::Plastic(Plastic::new(
                 Vec3::ones() * 0.8,
                 0.01 * (4 * i + 1) as f64,
-                Fresnel::SchlickDielectric(1.45),
+                1.45,
             ))
         })
         .collect();
@@ -201,14 +202,12 @@ pub fn material_test(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
             0.05,
             Fresnel::SchlickMetallic(Vec3::ones() * 0.8),
         )),
-        Material::CookTorrance(CookTorrance::new(
-            Vec3::ones() * 0.8,
-            0.05,
-            Fresnel::SchlickDielectric(1.45),
-        )),
+        Material::Plastic(Plastic::new(Vec3::ones() * 0.8, 0.05, 1.45)),
+        Material::CookTorranceGlass(CookTorranceGlass::new(Vec3::ones(), 0.05, 1.45)),
         Material::Reflect(Reflect::new(Vec3::ones() * 0.8)),
         Material::Refract(Refract::new(Vec3::ones() * 0.8, 1.45)),
         Material::Glass(Glass::new(Vec3::ones() * 0.8, 1.45)),
+        Material::NoReflect,
     ];
     let floor = Material::CookTorrance(CookTorrance::new(
         Vec3::ones(),
