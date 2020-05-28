@@ -187,7 +187,7 @@ pub fn cook_torrance_spheres_frosted_glass(
     z_far: f64,
     hdri: Image,
 ) -> (Camera, Scene) {
-    let mut mats: Vec<_> = (0..7)
+    let mats: Vec<_> = (0..7)
         .map(|i| {
             Material::CookTorranceGlass(CookTorranceGlass::new(
                 Vec3::ones(),
@@ -262,7 +262,7 @@ pub fn material_test(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
             90.,
             1920. / 500.,
             250. / 500.,
-            250,
+            125,
         ),
         Scene::new(
             objects,
