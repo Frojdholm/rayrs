@@ -142,6 +142,15 @@ impl Vector<f64> {
             ],
         }
     }
+
+    pub fn xyz_in_range_inclusive(&self, min: f64, max: f64) -> bool {
+        self.data[0] >= min
+            && self.data[0] <= max
+            && self.data[1] >= min
+            && self.data[1] <= max
+            && self.data[2] >= min
+            && self.data[2] <= max
+    }
 }
 
 impl Mul for Vector<f64> {
