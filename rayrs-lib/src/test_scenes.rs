@@ -60,7 +60,13 @@ pub fn glass_single_sphere(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Sce
 //     single_sphere(z_near, z_far, hdri, mat)
 // }
 
-fn suzanne(z_near: f64, z_far: f64, hdri: Image, mat: Material) -> (Camera, Scene) {
+fn obj_scene(
+    z_near: f64,
+    z_far: f64,
+    hdri: Image,
+    mat: Material,
+    obj_path: &str,
+) -> (Camera, Scene) {
     let floor = Material::CookTorrance(CookTorrance::new(
         Vec3::ones(),
         0.5,
@@ -69,11 +75,11 @@ fn suzanne(z_near: f64, z_far: f64, hdri: Image, mat: Material) -> (Camera, Scen
 
     let bottom = Object::plane(Axis::Y, -25., 25., -25., 25., 0., floor, Emission::Dark);
 
-    let suzanne = wavefront_obj::load_obj_file("suzanne.obj").unwrap();
-    let suzanne = Object::from_triangles(suzanne, mat, Emission::Dark);
+    let obj = wavefront_obj::load_obj_file(obj_path).unwrap();
+    let obj = Object::from_triangles(obj, mat, Emission::Dark);
 
     let mut objects = vec![bottom];
-    objects.extend(suzanne);
+    objects.extend(obj);
 
     (
         Camera::new(
@@ -102,12 +108,12 @@ pub fn copper_suzanne(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
         Fresnel::SchlickMetallic(Vec3::new(0.722, 0.451, 0.2)),
     ));
 
-    suzanne(z_near, z_far, hdri, mat)
+    obj_scene(z_near, z_far, hdri, mat, "suzanne.obj")
 }
 
 pub fn glass_suzanne(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
     let mat = Material::Glass(Glass::new(Vec3::ones() * 0.8, 1.45));
-    suzanne(z_near, z_far, hdri, mat)
+    obj_scene(z_near, z_far, hdri, mat, "suzanne.obj")
 }
 
 fn multiple_spheres(z_near: f64, z_far: f64, hdri: Image, mats: Vec<Material>) -> (Camera, Scene) {
