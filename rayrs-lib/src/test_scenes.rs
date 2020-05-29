@@ -27,9 +27,9 @@ fn single_sphere(z_near: f64, z_far: f64, hdri: Image, mat: Material) -> (Camera
             Vec3::unit_y().as_vec(),
             Vec3::unit_y().as_vec(),
             50.,
-            1920. / 1000.,
-            1080. / 1000.,
-            200,
+            1920. / 500.,
+            1080. / 500.,
+            100,
         ),
         Scene::new(
             objects,
@@ -55,10 +55,10 @@ pub fn glass_single_sphere(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Sce
     single_sphere(z_near, z_far, hdri, mat)
 }
 
-// pub fn cook_torrance_glass_single_sphere(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
-//     let mat = MaterialType::cook_torrance_glass(0.05, 1.45, Vec3::ones() * 0.8);
-//     single_sphere(z_near, z_far, hdri, mat)
-// }
+pub fn cook_torrance_glass_single_sphere(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
+    let mat = Material::CookTorranceGlass(CookTorranceGlass::new(Vec3::ones() * 0.8, 0.05, 1.45));
+    single_sphere(z_near, z_far, hdri, mat)
+}
 
 fn obj_scene(
     z_near: f64,
@@ -87,9 +87,9 @@ fn obj_scene(
             Vec3::unit_y().as_vec(),
             Vec3::unit_y().as_vec(),
             50.,
-            1920. / 1000.,
-            1080. / 1000.,
-            200,
+            1920. / 500.,
+            1080. / 500.,
+            100,
         ),
         Scene::new(
             objects,
