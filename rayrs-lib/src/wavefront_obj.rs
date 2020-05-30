@@ -1,4 +1,4 @@
-use super::geometry::Triangle;
+use super::geometry::{Sphere, Triangle};
 use super::vecmath::Vec3;
 
 use std::fs::File;
@@ -33,4 +33,24 @@ pub fn load_obj_file(filename: &str) -> io::Result<Vec<Triangle>> {
     }
 
     Ok(triangles)
+}
+
+pub fn load_obj_file_spheres(filename: &str, radius: f64) -> io::Result<Vec<Sphere>> {
+    let file = File::open(filename)?;
+    let reader = io::BufReader::new(file);
+
+    let mut spheres = Vec::new();
+
+    for line in reader.lines() {
+        let text = line?;
+        let v: Vec<_> = text.split(' ').collect();
+        if v[0] == "v" {
+            let x: f64 = v[1].parse().unwrap();
+            let y: f64 = v[2].parse().unwrap();
+            let z: f64 = v[3].parse().unwrap();
+            spheres.push(Sphere::new(radius, Vec3::new(x, y, z)));
+        }
+    }
+
+    Ok(spheres)
 }

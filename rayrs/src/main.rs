@@ -165,5 +165,6 @@ fn main() -> Result<(), ImageError> {
     //     spp,
     //     test_scenes::cook_torrance_spheres_cook_torrance_refract,
     // )?;
-    generate_image(hdri, "material_test", spp, test_scenes::material_test)
+    // generate_image(hdri, "material_test", spp, test_scenes::material_test)
+    generate_image(&hdri, "dragon", spp, test_scenes::sphere_dragon)
 }

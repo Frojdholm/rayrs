@@ -453,6 +453,17 @@ impl Object {
             .collect()
     }
 
+    pub fn from_spheres(spheres: Vec<Sphere>, mat: Material, emission: Emission) -> Vec<Object> {
+        spheres
+            .into_iter()
+            .map(|item| Object {
+                geom: Box::new(item),
+                mat: mat.clone(),
+                emission: emission.clone(),
+            })
+            .collect()
+    }
+
     pub fn box_geom(
         lower_left: Vec3,
         upper_right: Vec3,
