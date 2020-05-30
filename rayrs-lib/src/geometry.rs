@@ -1,4 +1,4 @@
-use super::vecmath::{Unit, Vec3};
+use super::vecmath::{Cross, Dot, Unit, Vec3, VecElements, VecUnit};
 use super::Object;
 use super::Ray;
 
@@ -28,7 +28,7 @@ impl<T: Hittable> Hittable for Flipped<T> {
     }
 
     fn normal(&self, p: Vec3) -> Unit<Vec3> {
-        Unit::new(-1. * self.0.normal(p).as_vec())
+        Unit::new(-1. * self.0.normal(p))
     }
 
     fn area(&self) -> f64 {
@@ -64,9 +64,9 @@ impl Hittable for Sphere {
     fn intersect(&self, ray: Ray) -> Option<f64> {
         let odiff = ray.origin - self.origin;
 
-        let a = ray.direction.mag_2();
+        let a = ray.direction.mag2();
         let b = 2. * ray.direction.dot(odiff);
-        let c = odiff.mag_2() - self.radius2;
+        let c = odiff.mag2() - self.radius2;
 
         let desc = b * b - 4. * a * c;
 

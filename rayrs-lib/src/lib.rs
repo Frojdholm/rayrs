@@ -6,7 +6,7 @@ pub mod test_scenes;
 pub mod vecmath;
 pub mod wavefront_obj;
 
-use vecmath::{Unit, Vec3};
+use vecmath::{Cross, Unit, Vec3, VecElements, VecUnit};
 
 use geometry::{Axis, AxisAlignedBoundingBox, Hittable, Plane, Sphere, Triangle};
 use material::{Emission, Emitting, Material, ScatteringEvent};
@@ -74,8 +74,8 @@ impl Camera {
         let ppc = ((ppi as f64) * 2.54).round() as u32;
 
         let z = (lookat - origin).unit();
-        let x = up.cross(z.as_vec()).unit();
-        let y = z.as_vec().cross(x.as_vec()).unit();
+        let x = up.cross(z).unit();
+        let y = z.cross(x).unit();
 
         Camera {
             origin,
@@ -87,7 +87,7 @@ impl Camera {
             ppc,
             e_x: x,
             e_y: y,
-            z: (width / (fov.to_radians() / 2.).tan()) * z.as_vec(),
+            z: (width / (fov.to_radians() / 2.).tan()) * z,
         }
     }
 
@@ -106,10 +106,7 @@ impl Camera {
         let x: f64 = (j + rand::random::<f64>()) / (self.ppc as f64) - self.width / 2.;
         let y: f64 = (i + rand::random::<f64>()) / (self.ppc as f64) - self.height / 2.;
 
-        Ray::new(
-            self.origin,
-            self.z + x * self.e_x.as_vec() + y * self.e_y.as_vec(),
-        )
+        Ray::new(self.origin, self.z + x * self.e_x + y * self.e_y)
     }
 }
 
@@ -371,7 +368,7 @@ impl Scene {
     // }
 
     pub fn background(&self, dir: Vec3) -> Vec3 {
-        let dir = dir.unit().as_vec();
+        let dir = dir.unit();
 
         let phi = dir.z().atan2(dir.x()) + PI;
         let theta = dir.y().acos();
@@ -401,7 +398,7 @@ impl Scene {
     }
 
     pub fn sky(&self, dir: Vec3) -> Vec3 {
-        let y = 0.5 * dir.unit().as_vec().y() + 1.;
+        let y = 0.5 * dir.unit().y() + 1.;
         return 2.0 * (y * Vec3::new(0.5, 0.5, 1.0) + (1. - y) * Vec3::ones());
     }
 }

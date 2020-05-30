@@ -1,4 +1,32 @@
+use std::f64;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
+
+pub trait Dot<Rhs = Self> {
+    type Output;
+
+    fn dot(self, other: Rhs) -> Self::Output;
+}
+
+pub trait Cross<Rhs = Self> {
+    type Output;
+
+    fn cross(self, other: Rhs) -> Self::Output;
+}
+
+pub trait VecElements<T> {
+    fn x(self) -> T;
+    fn y(self) -> T;
+    fn z(self) -> T;
+}
+
+pub trait VecUnit {
+    type Output;
+    type VecOutput;
+
+    fn mag(self) -> Self::Output;
+    fn mag2(self) -> Self::Output;
+    fn unit(self) -> Unit<Self::VecOutput>;
+}
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub struct Vector<T> {
@@ -9,17 +37,178 @@ pub struct Vector<T> {
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub struct Unit<T>(T);
 
-impl<T> Unit<T> {
-    /// Construct a new `Unit<T>`.
+impl Unit<Vector<f64>> {
+    /// Construct a new unit vector.
     ///
-    /// The programmer assures that the `T` passed as vec is unit.
-    pub fn new(vec: T) -> Unit<T> {
+    /// # Panics
+    /// If the passed vector is not a unit vector.
+    pub fn new(vec: Vector<f64>) -> Unit<Vector<f64>> {
+        assert!((vec.mag2() - 1.).abs() < 4. * f64::EPSILON);
+
+        Unit(vec)
+    }
+
+    /// Construct a new unit vector.
+    ///
+    /// # Note
+    /// The programmer assures that the vector passed is in fact a unit vector.
+    pub fn new_unchecked(vec: Vector<f64>) -> Unit<Vector<f64>> {
+        debug_assert!((vec.mag2() - 1.).abs() < 4. * f64::EPSILON);
+
         Unit(vec)
     }
 
     /// Use this vector as a normal vector.
-    pub fn as_vec(self) -> T {
+    pub fn as_vec(self) -> Vector<f64> {
         self.0
+    }
+
+    pub fn powf(self, n: f64) -> Vector<f64> {
+        self.0.powf(n)
+    }
+
+    pub fn clip(self, min: f64, max: f64) -> Vector<f64> {
+        self.0.clip(min, max)
+    }
+
+    pub fn rotate(self, rot: Vector<f64>) -> Unit<Vector<f64>> {
+        Unit(self.0.rotate(rot))
+    }
+
+    pub fn xyz_in_range_inclusive(&self, min: f64, max: f64) -> bool {
+        self.0.xyz_in_range_inclusive(min, max)
+    }
+}
+
+impl<T: Copy> VecElements<T> for Unit<Vector<T>> {
+    fn x(self) -> T {
+        self.0.data[0]
+    }
+
+    fn y(self) -> T {
+        self.0.data[1]
+    }
+
+    fn z(self) -> T {
+        self.0.data[2]
+    }
+}
+
+impl<T: Copy> VecElements<T> for Vector<T> {
+    fn x(self) -> T {
+        self.data[0]
+    }
+
+    fn y(self) -> T {
+        self.data[1]
+    }
+
+    fn z(self) -> T {
+        self.data[2]
+    }
+}
+
+impl VecUnit for Unit<Vector<f64>> {
+    type Output = f64;
+    type VecOutput = Vector<f64>;
+
+    fn mag(self) -> Self::Output {
+        1.
+    }
+
+    fn mag2(self) -> Self::Output {
+        1.
+    }
+
+    fn unit(self) -> Unit<Self::VecOutput> {
+        self
+    }
+}
+
+impl VecUnit for Vector<f64> {
+    type Output = f64;
+    type VecOutput = Self;
+
+    fn mag(self) -> Self::Output {
+        self.mag2().sqrt()
+    }
+
+    fn mag2(self) -> Self::Output {
+        self.dot(self)
+    }
+
+    fn unit(self) -> Unit<Self::VecOutput> {
+        Unit(self / self.mag())
+    }
+}
+
+impl Dot for Vector<f64> {
+    type Output = f64;
+
+    fn dot(self, other: Vector<f64>) -> Self::Output {
+        self.data[0] * other.data[0] + self.data[1] * other.data[1] + self.data[2] * other.data[2]
+    }
+}
+
+impl Dot for Unit<Vector<f64>> {
+    type Output = f64;
+
+    fn dot(self, other: Unit<Vector<f64>>) -> Self::Output {
+        self.0.dot(other.0)
+    }
+}
+
+impl Dot<Vector<f64>> for Unit<Vector<f64>> {
+    type Output = f64;
+
+    fn dot(self, other: Vector<f64>) -> Self::Output {
+        self.0.dot(other)
+    }
+}
+
+impl Dot<Unit<Vector<f64>>> for Vector<f64> {
+    type Output = f64;
+
+    fn dot(self, other: Unit<Vector<f64>>) -> Self::Output {
+        self.dot(other.0)
+    }
+}
+
+impl Cross for Vector<f64> {
+    type Output = Self;
+
+    fn cross(self, other: Vector<f64>) -> Self::Output {
+        Vector {
+            data: [
+                self.data[1] * other.data[2] - self.data[2] * other.data[1],
+                self.data[2] * other.data[0] - self.data[0] * other.data[2],
+                self.data[0] * other.data[1] - self.data[1] * other.data[0],
+            ],
+        }
+    }
+}
+
+impl Cross for Unit<Vector<f64>> {
+    type Output = Self;
+
+    fn cross(self, other: Unit<Vector<f64>>) -> Self::Output {
+        Unit(self.0.cross(other.0))
+    }
+}
+
+impl Cross<Vector<f64>> for Unit<Vector<f64>> {
+    type Output = Vector<f64>;
+
+    fn cross(self, other: Vector<f64>) -> Self::Output {
+        self.0.cross(other)
+    }
+}
+
+impl Cross<Unit<Vector<f64>>> for Vector<f64> {
+    type Output = Self;
+
+    fn cross(self, other: Unit<Vector<f64>>) -> Self::Output {
+        self.cross(other.0)
     }
 }
 
@@ -28,18 +217,6 @@ pub type Vec3 = Vector<f64>;
 impl<T: Copy> Vector<T> {
     pub fn new(x: T, y: T, z: T) -> Vector<T> {
         Vector { data: [x, y, z] }
-    }
-
-    pub fn x(self) -> T {
-        self.data[0]
-    }
-
-    pub fn y(self) -> T {
-        self.data[1]
-    }
-
-    pub fn z(self) -> T {
-        self.data[2]
     }
 
     pub fn iter(&self) -> std::slice::Iter<T> {
@@ -78,32 +255,6 @@ impl Vector<f64> {
 
     pub fn is_ones(&self) -> bool {
         self.data == [1., 1., 1.]
-    }
-
-    pub fn cross(self, other: Vector<f64>) -> Vector<f64> {
-        Vector {
-            data: [
-                self.data[1] * other.data[2] - self.data[2] * other.data[1],
-                self.data[2] * other.data[0] - self.data[0] * other.data[2],
-                self.data[0] * other.data[1] - self.data[1] * other.data[0],
-            ],
-        }
-    }
-
-    pub fn dot(self, other: Vector<f64>) -> f64 {
-        self.data[0] * other.data[0] + self.data[1] * other.data[1] + self.data[2] * other.data[2]
-    }
-
-    pub fn mag_2(self) -> f64 {
-        self.dot(self)
-    }
-
-    pub fn mag(self) -> f64 {
-        self.mag_2().sqrt()
-    }
-
-    pub fn unit(self) -> Unit<Vector<f64>> {
-        Unit(self / self.mag())
     }
 
     pub fn orthonormal_basis(normal: Unit<Vector<f64>>) -> (Unit<Vector<f64>>, Unit<Vector<f64>>) {
@@ -206,27 +357,43 @@ impl Mul<Vector<f64>> for f64 {
     }
 }
 
-impl Mul for &Vector<f64> {
+impl Mul for Unit<Vector<f64>> {
     type Output = Vector<f64>;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        Vector {
-            data: [
-                self.data[0] * rhs.data[0],
-                self.data[1] * rhs.data[1],
-                self.data[2] * rhs.data[2],
-            ],
-        }
+        self.0 * rhs.0
     }
 }
 
-impl Mul<f64> for &Vector<f64> {
+impl Mul<Vector<f64>> for Unit<Vector<f64>> {
+    type Output = Vector<f64>;
+
+    fn mul(self, rhs: Vector<f64>) -> Self::Output {
+        self.0 * rhs
+    }
+}
+
+impl Mul<Unit<Vector<f64>>> for Vector<f64> {
+    type Output = Self;
+
+    fn mul(self, rhs: Unit<Vector<f64>>) -> Self::Output {
+        self * rhs.0
+    }
+}
+
+impl Mul<f64> for Unit<Vector<f64>> {
     type Output = Vector<f64>;
 
     fn mul(self, rhs: f64) -> Self::Output {
-        Vector {
-            data: [self.data[0] * rhs, self.data[1] * rhs, self.data[2] * rhs],
-        }
+        self.0 * rhs
+    }
+}
+
+impl Mul<Unit<Vector<f64>>> for f64 {
+    type Output = Vector<f64>;
+
+    fn mul(self, rhs: Unit<Vector<f64>>) -> Self::Output {
+        self * rhs.0
     }
 }
 
@@ -256,13 +423,11 @@ impl Div<f64> for Vector<f64> {
     }
 }
 
-impl Div<f64> for &Vector<f64> {
+impl Div<f64> for Unit<Vector<f64>> {
     type Output = Vector<f64>;
 
     fn div(self, rhs: f64) -> Self::Output {
-        Vector {
-            data: [self.data[0] / rhs, self.data[1] / rhs, self.data[2] / rhs],
-        }
+        self.0 / rhs
     }
 }
 
@@ -288,6 +453,30 @@ impl Add for Vector<f64> {
     }
 }
 
+impl Add for Unit<Vector<f64>> {
+    type Output = Vector<f64>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        self.0 + rhs.0
+    }
+}
+
+impl Add<Vector<f64>> for Unit<Vector<f64>> {
+    type Output = Vector<f64>;
+
+    fn add(self, rhs: Vector<f64>) -> Self::Output {
+        self.0 + rhs
+    }
+}
+
+impl Add<Unit<Vector<f64>>> for Vector<f64> {
+    type Output = Self;
+
+    fn add(self, rhs: Unit<Vector<f64>>) -> Self::Output {
+        self + rhs.0
+    }
+}
+
 impl AddAssign for Vector<f64> {
     fn add_assign(&mut self, rhs: Self) {
         self.data[0] += rhs.data[0];
@@ -307,6 +496,30 @@ impl Sub for Vector<f64> {
                 self.data[2] - rhs.data[2],
             ],
         }
+    }
+}
+
+impl Sub for Unit<Vector<f64>> {
+    type Output = Vector<f64>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        self.0 - rhs.0
+    }
+}
+
+impl Sub<Vector<f64>> for Unit<Vector<f64>> {
+    type Output = Vector<f64>;
+
+    fn sub(self, rhs: Vector<f64>) -> Self::Output {
+        self.0 - rhs
+    }
+}
+
+impl Sub<Unit<Vector<f64>>> for Vector<f64> {
+    type Output = Self;
+
+    fn sub(self, rhs: Unit<Vector<f64>>) -> Self::Output {
+        self - rhs.0
     }
 }
 
@@ -388,7 +601,7 @@ mod tests {
 
     #[test]
     fn test_mag2() {
-        let m = Vec3::new(1., 2., 3.).mag_2();
+        let m = Vec3::new(1., 2., 3.).mag2();
         assert_eq!(14., m);
     }
 

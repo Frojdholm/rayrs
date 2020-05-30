@@ -1,4 +1,4 @@
-use super::vecmath::Vec3;
+use super::vecmath::{Vec3, VecElements};
 
 use std::fs::File;
 use std::io::Result;

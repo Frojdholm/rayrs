@@ -5,7 +5,7 @@
 //! functions for calculating Fresnel coefficients and PDFs.
 
 use super::geometry::Hittable;
-use super::vecmath::{Unit, Vec3};
+use super::vecmath::{Dot, Unit, Vec3, VecElements, VecUnit};
 use super::Ray;
 
 use std::f64;
@@ -199,7 +199,7 @@ impl Bsdf for LambertianDiffuse {
             self.pdf()
         };
         let light = pdf.generate(position, normal, view);
-        let color = self.brdf(position, normal, light, view) * normal.as_vec().dot(light.as_vec())
+        let color = self.brdf(position, normal, light, view) * normal.dot(light)
             / pdf.value(position, normal, light, view);
 
         ScatteringEvent::Scatter {
@@ -219,7 +219,7 @@ impl Bsdf for Reflect {
     ) -> ScatteringEvent {
         let pdf = self.pdf();
         let light = reflect(normal, view);
-        let color = self.brdf(position, normal, light, view) * normal.as_vec().dot(light.as_vec())
+        let color = self.brdf(position, normal, light, view) * normal.dot(light)
             / pdf.value(position, normal, light, view);
 
         ScatteringEvent::Scatter {
@@ -239,7 +239,7 @@ impl Bsdf for Refract {
     ) -> ScatteringEvent {
         let pdf = self.pdf();
 
-        let cos_theta = normal.as_vec().dot(view.as_vec());
+        let cos_theta = normal.dot(view);
 
         let direction = if cos_theta > 0. {
             ScatteringDirection::Entering
@@ -255,7 +255,7 @@ impl Bsdf for Refract {
         };
 
         let color = self.btdf(position, normal, light, view, direction, 1.)
-            * normal.as_vec().dot(light.as_vec()).abs()
+            * normal.dot(light).abs()
             / pdf.value(position, normal, light, view);
 
         ScatteringEvent::Scatter {
@@ -275,7 +275,7 @@ impl Bsdf for Glass {
     ) -> ScatteringEvent {
         // The glass material will mix between the refract and reflection
         // based on the fresnel coefficient.
-        let cos_theta = normal.as_vec().dot(view.as_vec());
+        let cos_theta = normal.dot(view);
 
         let direction = if cos_theta > 0. {
             ScatteringDirection::Entering
@@ -337,7 +337,7 @@ impl Bsdf for CookTorranceRefract {
         view: Unit<Vec3>,
         _pdf: Option<Pdf>,
     ) -> ScatteringEvent {
-        let direction = if normal.as_vec().dot(view.as_vec()) > 0. {
+        let direction = if normal.dot(view) > 0. {
             ScatteringDirection::Entering
         } else {
             ScatteringDirection::Exiting
@@ -383,7 +383,7 @@ impl Bsdf for CookTorranceGlass {
 
         let halfway_vec = pdf_res.vector;
 
-        let direction = if normal.as_vec().dot(view.as_vec()) > 0. {
+        let direction = if normal.dot(view) > 0. {
             ScatteringDirection::Entering
         } else {
             ScatteringDirection::Exiting
@@ -395,7 +395,7 @@ impl Bsdf for CookTorranceGlass {
 
         let normal = direction.normal(normal);
 
-        let cos_theta = halfway_vec.as_vec().dot(view.as_vec());
+        let cos_theta = halfway_vec.dot(view);
 
         let ior_ratio = direction.ior_ratio(self.ior);
 
@@ -594,11 +594,11 @@ impl CookTorrance {
         light: Unit<Vec3>,
         pdf: f64,
     ) -> ScatteringEvent {
-        if halfway_vec.as_vec().dot(view.as_vec()) < 0. {
+        if halfway_vec.dot(view) < 0. {
             return ScatteringEvent::NoScatter;
         }
 
-        let nl = normal.as_vec().dot(light.as_vec());
+        let nl = normal.dot(light);
 
         // If the light vector points inside the object we terminate
         if nl < 0.0 {
@@ -607,7 +607,7 @@ impl CookTorrance {
 
         // Conversion factor for going from a distribution over halfway vectors
         // to a distribution over light vectors.
-        let frac_dwh_dwi = 4.0 * halfway_vec.as_vec().dot(light.as_vec());
+        let frac_dwh_dwi = 4.0 * halfway_vec.dot(light);
 
         let color = self.brdf(position, normal, light, view) * nl;
         let color = color / pdf * frac_dwh_dwi;
@@ -633,19 +633,19 @@ impl CookTorrance {
         direction: ScatteringDirection,
         ior_ratio: f64,
     ) -> ScatteringEvent {
-        if halfway_vec.as_vec().dot(view.as_vec()) < 0. {
+        if halfway_vec.dot(view) < 0. {
             return ScatteringEvent::NoScatter;
         }
 
-        let nl = normal.as_vec().dot(light.as_vec());
+        let nl = normal.dot(light);
 
         // If the light vector points inside the object we terminate
         if nl > 0.0 {
             return ScatteringEvent::NoScatter;
         }
 
-        let hl = halfway_vec.as_vec().dot(light.as_vec()).abs();
-        let hv = halfway_vec.as_vec().dot(view.as_vec()).abs();
+        let hl = halfway_vec.dot(light).abs();
+        let hv = halfway_vec.dot(view).abs();
 
         // Conversion factor for going from a distribution over halfway vectors
         // to a distribution over light vectors.
@@ -735,12 +735,12 @@ impl<'a> Pdf<'a> {
         view: Unit<Vec3>,
     ) -> f64 {
         match self {
-            Pdf::Cosine => normal.as_vec().dot(light.as_vec()) * FRAC_1_PI,
+            Pdf::Cosine => normal.dot(light) * FRAC_1_PI,
             Pdf::Uniform => FRAC_PI_2,
             Pdf::Beckmann(alpha2, typ) => {
                 let halfway_vec = match typ {
-                    ReflectType::Reflect => light.as_vec() + view.as_vec(),
-                    ReflectType::Refract(ior_ratio) => light.as_vec() + *ior_ratio * view.as_vec(),
+                    ReflectType::Reflect => light + view,
+                    ReflectType::Refract(ior_ratio) => light + *ior_ratio * view,
                 };
 
                 if halfway_vec.is_zeros() {
@@ -750,7 +750,7 @@ impl<'a> Pdf<'a> {
                 }
 
                 let halfway_vec = halfway_vec.unit();
-                let nh = normal.as_vec().dot(halfway_vec.as_vec()).abs();
+                let nh = normal.dot(halfway_vec).abs();
                 // Assume the halfway vector and normal are always in the
                 // same hemisphere and do the absolute value.
                 let theta_h = nh.acos();
@@ -768,14 +768,13 @@ impl<'a> Pdf<'a> {
             Pdf::Hittable(geom) => {
                 let ray = Ray::new(position, light.as_vec());
                 if let Some(t) = geom.intersect(ray) {
-                    (position - ray.point(t)).mag_2()
-                        / (normal.as_vec().dot(light.as_vec()) * geom.area())
+                    (position - ray.point(t)).mag2() / (normal.dot(light) * geom.area())
                 } else {
                     0.
                 }
             }
             Pdf::Mix(kind, pdf1, pdf2) => {
-                if normal.as_vec().dot(light.as_vec()) < 0. {
+                if normal.dot(light) < 0. {
                     return f64::INFINITY;
                 }
 
@@ -812,7 +811,7 @@ impl<'a> Pdf<'a> {
                 let y = phi.sin() * u.sqrt();
                 let z = (1. - u).sqrt();
 
-                Unit::new(x * e1.as_vec() + y * e2.as_vec() + z * normal.as_vec())
+                Unit::new_unchecked(x * e1 + y * e2 + z * normal)
             }
             Pdf::Uniform => {
                 let (e1, e2) = Vec3::orthonormal_basis(normal);
@@ -824,7 +823,7 @@ impl<'a> Pdf<'a> {
                 let y = phi.sin() * (u * (1. - u)).sqrt();
                 let z = 1. - u;
 
-                Unit::new(x * e1.as_vec() + y * e2.as_vec() + z * normal.as_vec())
+                Unit::new_unchecked(x * e1 + y * e2 + z * normal)
             }
             Pdf::Beckmann(alpha2, _) => {
                 let (e1, e2) = Vec3::orthonormal_basis(normal);
@@ -838,8 +837,8 @@ impl<'a> Pdf<'a> {
                 let x = phi.cos() * sintheta;
                 let y = phi.sin() * sintheta;
 
-                let halfway_vec = x * e1.as_vec() + y * e2.as_vec() + costheta * normal.as_vec();
-                Unit::new(halfway_vec)
+                let halfway_vec = x * e1 + y * e2 + costheta * normal;
+                Unit::new_unchecked(halfway_vec)
             }
             Pdf::Dirac(typ) => match typ {
                 ReflectType::Reflect => reflect(normal, view),
@@ -960,10 +959,10 @@ impl MicrofacetDistribution {
                 let x = phi.cos() * sintheta;
                 let y = phi.sin() * sintheta;
 
-                let halfway_vec = x * e1.as_vec() + y * e2.as_vec() + costheta * normal.as_vec();
-                let nh = normal.as_vec().dot(halfway_vec);
+                let halfway_vec = x * e1 + y * e2 + costheta * normal;
+                let nh = normal.dot(halfway_vec);
                 PdfValue {
-                    vector: Unit::new(halfway_vec),
+                    vector: Unit::new_unchecked(halfway_vec),
                     value: (-tan2theta / alpha2).exp() / (PI * alpha2 * nh.powi(4)),
                 }
             }
@@ -973,7 +972,7 @@ impl MicrofacetDistribution {
     fn value(&self, normal: Unit<Vec3>, halfway_vec: Unit<Vec3>) -> f64 {
         match self {
             Self::Beckmann(alpha2) => {
-                let nh = normal.as_vec().dot(halfway_vec.as_vec());
+                let nh = normal.dot(halfway_vec);
                 assert!(nh > 0.);
 
                 let theta_h = nh.acos();
@@ -1013,7 +1012,7 @@ impl ScatteringDirection {
     fn normal(&self, normal: Unit<Vec3>) -> Unit<Vec3> {
         match self {
             Self::Entering => normal,
-            Self::Exiting => Unit::new(-1. * normal.as_vec()),
+            Self::Exiting => Unit::new_unchecked(-1. * normal),
         }
     }
 
@@ -1056,7 +1055,7 @@ impl Brdf for Reflect {
     ) -> Vec3 {
         // Divide by the cos(theta) term to cancel with the projection term in
         // the integral.
-        self.color / normal.as_vec().dot(light.as_vec()).abs()
+        self.color / normal.dot(light).abs()
     }
 
     fn pdf(&self) -> Pdf {
@@ -1076,10 +1075,10 @@ impl Brdf for CookTorrance {
         light: Unit<Vec3>,
         view: Unit<Vec3>,
     ) -> Vec3 {
-        let nv = normal.as_vec().dot(view.as_vec()).abs();
-        let nl = normal.as_vec().dot(light.as_vec()).abs();
+        let nv = normal.dot(view).abs();
+        let nl = normal.dot(light).abs();
 
-        let halfway_vec = view.as_vec() + light.as_vec();
+        let halfway_vec = view + light;
 
         // At glancing angles we have a singularity so we return the analytic
         // limit value which is 0.
@@ -1091,7 +1090,7 @@ impl Brdf for CookTorrance {
         }
 
         let halfway_vec = halfway_vec.unit();
-        let nh = normal.as_vec().dot(halfway_vec.as_vec());
+        let nh = normal.dot(halfway_vec);
 
         let theta_h = nh.acos();
 
@@ -1104,7 +1103,7 @@ impl Brdf for CookTorrance {
 
         let beckmann =
             (-tan_theta_h * tan_theta_h / (self.alpha2)).exp() / (PI * self.alpha2 * nh.powi(4));
-        let hv = halfway_vec.as_vec().dot(view.as_vec());
+        let hv = halfway_vec.dot(view);
         let geometric_factor = (2.0 * nh * nv / hv).min((2.0 * nh * nl / hv).min(1.));
 
         self.color
@@ -1135,11 +1134,11 @@ impl Btdf for Refract {
         _direction: ScatteringDirection,
         _ior: f64,
     ) -> Vec3 {
-        if light.as_vec().dot(view.as_vec()) > 0. {
+        if light.dot(view) > 0. {
             // In case of total internal reflection we don't return anything.
             Vec3::zeros()
         } else {
-            self.color / normal.as_vec().dot(light.as_vec()).abs()
+            self.color / normal.dot(light).abs()
         }
     }
 
@@ -1162,8 +1161,8 @@ impl Btdf for CookTorrance {
         direction: ScatteringDirection,
         _ior: f64,
     ) -> Vec3 {
-        let nv = normal.as_vec().dot(view.as_vec()).abs();
-        let nl = normal.as_vec().dot(light.as_vec()).abs();
+        let nv = normal.dot(view).abs();
+        let nl = normal.dot(light).abs();
 
         let ior_self = match self.fresnel {
             Fresnel::SchlickDielectric(ior) => ior,
@@ -1172,11 +1171,11 @@ impl Btdf for CookTorrance {
 
         let ior_ratio = direction.ior_ratio(ior_self);
 
-        let halfway_vec = light.as_vec() + ior_ratio * view.as_vec();
+        let halfway_vec = light + ior_ratio * view;
 
         // The above procedure yields a vector proportional to the halfway
         // vector, but we might have to flip it in the correct direction.
-        let halfway_vec = if halfway_vec.dot(view.as_vec()) > 0. {
+        let halfway_vec = if halfway_vec.dot(view) > 0. {
             halfway_vec
         } else {
             -1. * halfway_vec
@@ -1194,7 +1193,7 @@ impl Btdf for CookTorrance {
 
         // Use absolute value to force halfway_vec and normal to be in the same
         // hemisphere.
-        let nh = normal.as_vec().dot(halfway_vec.as_vec());
+        let nh = normal.dot(halfway_vec);
 
         let theta_h = nh.acos();
 
@@ -1207,8 +1206,8 @@ impl Btdf for CookTorrance {
         let beckmann =
             (-tan_theta_h * tan_theta_h / self.alpha2).exp() / (PI * self.alpha2 * nh.powi(4));
 
-        let hl = halfway_vec.as_vec().dot(light.as_vec()).abs();
-        let hv = halfway_vec.as_vec().dot(view.as_vec()).abs();
+        let hl = halfway_vec.dot(light).abs();
+        let hv = halfway_vec.dot(view).abs();
 
         // TODO: Figure out if hv should be in denominator of both.
         let geometric_factor = (2.0 * nh * nv / hv).min((2.0 * nh * nl / hv).min(1.));
@@ -1263,8 +1262,8 @@ impl Fresnel {
 
 /// Schlick approximation for scalar r0.
 fn schlick_scalar(ior_curr: f64, ior_new: f64, normal: Unit<Vec3>, view: Unit<Vec3>) -> f64 {
-    let normal = normal.as_vec();
-    let view = view.as_vec();
+    let normal = normal;
+    let view = view;
 
     let r0 = (ior_curr - ior_new) / (ior_curr + ior_new);
     let r0 = r0 * r0;
@@ -1273,23 +1272,23 @@ fn schlick_scalar(ior_curr: f64, ior_new: f64, normal: Unit<Vec3>, view: Unit<Ve
 
 /// Schlick approximation for vector r0.
 fn schlick_vec(r0: Vec3, normal: Unit<Vec3>, view: Unit<Vec3>) -> Vec3 {
-    let normal = normal.as_vec();
-    let view = view.as_vec();
+    let normal = normal;
+    let view = view;
 
     r0 + (Vec3::new(1., 1., 1.) - r0) * (1. - normal.dot(view)).powi(5)
 }
 
 /// Returns the view vector reflected in the normal.
 fn reflect(normal: Unit<Vec3>, view: Unit<Vec3>) -> Unit<Vec3> {
-    let view = view.as_vec();
-    let normal = normal.as_vec();
-    Unit::new(2. * view.dot(normal) * normal - view)
+    let view = view;
+    let normal = normal;
+    Unit::new_unchecked(2. * view.dot(normal) * normal - view)
 }
 
 /// Returns the view vector refracted by the material in the normal.
 fn refract(normal: Unit<Vec3>, view: Unit<Vec3>, ior_ratio: f64) -> Option<Unit<Vec3>> {
-    let view = view.as_vec();
-    let normal = normal.as_vec();
+    let view = view;
+    let normal = normal;
 
     let cos_theta = view.dot(normal);
 
@@ -1301,8 +1300,8 @@ fn refract(normal: Unit<Vec3>, view: Unit<Vec3>, ior_ratio: f64) -> Option<Unit<
     }
 
     let dir_parallel = ior_ratio * (cos_theta * normal - view);
-    let dir_perp = -(1. - dir_parallel.mag_2()).sqrt() * normal;
-    Some(Unit::new(dir_perp + dir_parallel))
+    let dir_perp = -(1. - dir_parallel.mag2()).sqrt() * normal;
+    Some(Unit::new_unchecked(dir_perp + dir_parallel))
 }
 
 /// A mix-factor for the mix pdf and mix material.

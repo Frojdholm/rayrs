@@ -1,5 +1,5 @@
 use super::geometry::{Axis, AxisAlignedBoundingBox};
-use super::vecmath::Vec3;
+use super::vecmath::{Vec3, VecElements};
 use super::{Object, Ray};
 
 use std::f64;
