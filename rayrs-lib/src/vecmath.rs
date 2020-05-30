@@ -1,47 +1,85 @@
+//! A simple vector math library
+//!
+//! Contains the most essential vector operations needed by rayrs.
 use std::f64;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
+/// A 3-dimensional vector.
+#[derive(PartialEq, Debug, Copy, Clone)]
+pub struct Vector<T> {
+    data: [T; 3],
+}
+
+/// Convenience type alias for the most commonly used vector.
+///
+/// This type alias is here for compatiblity since the vector type was
+/// previously called `Vec3`.
+pub type Vec3 = Vector<f64>;
+
+/// A wrapper type for unit vectors.
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub struct Unit<T>(T);
+
+/// Vector dot product.
 pub trait Dot<Rhs = Self> {
     type Output;
 
     fn dot(self, other: Rhs) -> Self::Output;
 }
 
+/// Vector cross product.
 pub trait Cross<Rhs = Self> {
     type Output;
 
     fn cross(self, other: Rhs) -> Self::Output;
 }
 
+/// Trait for accessing the individual elements of the vector.
 pub trait VecElements<T> {
     fn x(self) -> T;
     fn y(self) -> T;
     fn z(self) -> T;
 }
 
+/// Unit vector related operations.
 pub trait VecUnit {
     type Output;
     type VecOutput;
 
+    /// Get the magnitude of the vector.
     fn mag(self) -> Self::Output;
+    /// Get the magnitude squared of the vector.
     fn mag2(self) -> Self::Output;
+    /// Get the unit vector proportional to this vector.
     fn unit(self) -> Unit<Self::VecOutput>;
 }
-
-#[derive(PartialEq, Debug, Copy, Clone)]
-pub struct Vector<T> {
-    data: [T; 3],
-}
-
-/// A wrapper type for unit vectors.
-#[derive(PartialEq, Debug, Clone, Copy)]
-pub struct Unit<T>(T);
 
 impl Unit<Vector<f64>> {
     /// Construct a new unit vector.
     ///
     /// # Panics
     /// If the passed vector is not a unit vector.
+    ///
+    /// # Examples
+    /// A vector created through some other means can be made into a unit vector
+    /// if the length is 1.
+    /// ```
+    /// use rayrs_lib::vecmath::{Unit, Vec3};
+    ///
+    /// let v = Vec3::new(1., 0., 0.);
+    /// let unit_v = Unit::new(v);
+    ///
+    /// assert_eq!(Vec3::unit_x(), unit_v);
+    /// ```
+    ///
+    /// Trying to create a unit vector from a vector that does not have a length
+    /// of 1 will lead to a panic.
+    /// ```should_panic
+    /// use rayrs_lib::vecmath::{Unit, Vec3};
+    ///
+    /// let v = Vec3::new(2., 0., 0.);
+    /// let unit_v = Unit::new(v); // Panic!
+    /// ```
     pub fn new(vec: Vector<f64>) -> Unit<Vector<f64>> {
         assert!((vec.mag2() - 1.).abs() < 4. * f64::EPSILON);
 
@@ -51,32 +89,378 @@ impl Unit<Vector<f64>> {
     /// Construct a new unit vector.
     ///
     /// # Note
-    /// The programmer assures that the vector passed is in fact a unit vector.
+    /// The use must assure that the vector passed is in fact a unit vector.
+    ///
+    /// # Examples
+    /// Creating unit vectors work the same as for the checked function.
+    /// ```
+    /// use rayrs_lib::vecmath::{Unit, Vec3};
+    ///
+    /// let v = Vec3::new(1., 0., 0.);
+    /// let unit_v = Unit::new_unchecked(v);
+    ///
+    /// assert_eq!(Vec3::unit_x(), unit_v);
+    /// ```
+    ///
+    /// However, vectors can be made into unit vectors when they are really not,
+    /// which will cause erroneous results when using methods from the
+    /// [`VecUnit`] trait.
+    /// ```should_panic
+    /// use rayrs_lib::vecmath::{Unit, Vec3, VecUnit};
+    ///
+    /// let v = Vec3::new(2., 0., 0.);
+    /// let unit_v = Unit::new_unchecked(v);
+    ///
+    /// assert_eq!(v.mag2(), unit_v.mag2()); // Panic! 4.0 != 1.0
+    /// ```
+    ///
+    /// [`VecUnit`]: ../vecmath/trait.VecUnit.html
     pub fn new_unchecked(vec: Vector<f64>) -> Unit<Vector<f64>> {
         debug_assert!((vec.mag2() - 1.).abs() < 4. * f64::EPSILON);
 
         Unit(vec)
     }
 
-    /// Use this vector as a normal vector.
+    /// Get the underlying Vector<f64>.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rayrs_lib::vecmath::{Unit, Vec3};
+    ///
+    /// let v = Vec3::new(1., 0., 0.);
+    /// let unit_v = Unit::new(v);
+    ///
+    /// assert_eq!(v, unit_v.as_vec());
+    /// ```
     pub fn as_vec(self) -> Vector<f64> {
         self.0
     }
 
+    /// Calculate `powf` for all components of the vector.
+    ///
+    /// For examples see [`Vector::powf`].
+    ///
+    /// [`Vec3::powf`]: ../vecmath/struct.Vector.html#method.powf
     pub fn powf(self, n: f64) -> Vector<f64> {
         self.0.powf(n)
     }
 
+    /// Clip the components of the vector.
+    ///
+    /// For examples see [`Vector::clip`].
+    ///
+    /// [`Vector::clip`]: ../vecmath/struct.Vector.html#method.clip
     pub fn clip(self, min: f64, max: f64) -> Vector<f64> {
         self.0.clip(min, max)
     }
 
+    /// Rotate the vector around the xyz axis.
+    ///
+    /// The number of radians for each axis is determined by the components
+    /// of the `rot` vector.
+    ///
+    /// For examples see [`Vector::rotate`].
+    ///
+    /// [`Vector::rotate`]: ../vecmath/struct.Vector.html#method.rotate
     pub fn rotate(self, rot: Vector<f64>) -> Unit<Vector<f64>> {
         Unit(self.0.rotate(rot))
     }
 
+    /// Check if the components of the vector are in a range, inclusive bounds.
+    ///
+    /// For examples see [`Vector::xyz_in_range_inclusive`].
+    ///
+    /// [`Vector::xyz_in_range_inclusive`]:
+    /// ../vecmath/struct.Vector.html#method.xyz_in_range_inclusive
     pub fn xyz_in_range_inclusive(&self, min: f64, max: f64) -> bool {
         self.0.xyz_in_range_inclusive(min, max)
+    }
+}
+
+impl<T: Copy> Vector<T> {
+    /// Construct a new vector.
+    ///
+    /// # Examples
+    /// A vector can be constructed with any type that implements copy.
+    /// ```
+    /// use rayrs_lib::vecmath::{VecElements, Vector};
+    ///
+    /// let v = Vector::new(1, 2, 3);
+    ///
+    /// assert_eq!(v.x(), 1);
+    /// assert_eq!(v.y(), 2);
+    /// assert_eq!(v.z(), 3);
+    /// ```
+    ///
+    /// Most methods are only implemented for `f64` and there is a convenience
+    /// type alias for `Vector<f64>`.
+    /// ```
+    /// use rayrs_lib::vecmath::{Vec3, VecUnit};
+    ///
+    /// let v = Vec3::new(1., 2., 3.);
+    ///
+    /// assert_eq!(v.mag2(), 14.);
+    /// ```
+    pub fn new(x: T, y: T, z: T) -> Vector<T> {
+        Vector { data: [x, y, z] }
+    }
+
+    /// Generate an iterator over the components of the vector.
+    pub fn iter(&self) -> std::slice::Iter<T> {
+        self.data.iter()
+    }
+
+    /// Generate an iterator over the components of the vector.
+    ///
+    /// This method gives back an iterator that produces mutable references
+    /// to the underlying data.
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<T> {
+        self.data.iter_mut()
+    }
+}
+
+impl Vector<f64> {
+    /// Construct a new vector filled with ones.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::vecmath::Vec3;
+    ///
+    /// let v = Vec3::ones();
+    ///
+    /// assert!(v.is_ones());
+    /// ```
+    pub fn ones() -> Vector<f64> {
+        Vector { data: [1., 1., 1.] }
+    }
+
+    /// Construct a new vector filled with zeros.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::vecmath::Vec3;
+    ///
+    /// let v = Vec3::zeros();
+    ///
+    /// assert!(v.is_zeros());
+    /// ```
+    pub fn zeros() -> Vector<f64> {
+        Vector { data: [0., 0., 0.] }
+    }
+
+    /// Construct a new unit vector aligned with the x-axis.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::vecmath::{Vec3, VecElements};
+    ///
+    /// let v = Vec3::unit_x();
+    ///
+    /// assert!(v.x() == 1. && v.y() == 0. && v.z() == 0.);
+    /// ```
+    pub fn unit_x() -> Unit<Vector<f64>> {
+        Unit(Vector { data: [1., 0., 0.] })
+    }
+
+    /// Construct a new unit vector aligned with the y-axis.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::vecmath::{Vec3, VecElements};
+    ///
+    /// let v = Vec3::unit_y();
+    ///
+    /// assert!(v.x() == 0. && v.y() == 1. && v.z() == 0.);
+    /// ```
+    pub fn unit_y() -> Unit<Vector<f64>> {
+        Unit(Vector { data: [0., 1., 0.] })
+    }
+
+    /// Construct a new unit vector aligned with the z-axis.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::vecmath::{Vec3, VecElements};
+    ///
+    /// let v = Vec3::unit_z();
+    ///
+    /// assert!(v.x() == 0. && v.y() == 0. && v.z() == 1.);
+    /// ```
+    pub fn unit_z() -> Unit<Vector<f64>> {
+        Unit(Vector { data: [0., 0., 1.] })
+    }
+
+    /// Check if the vector is all zeros.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::vecmath::Vec3;
+    ///
+    /// let v = Vec3::zeros();
+    ///
+    /// assert!(v.is_zeros());
+    /// ```
+    pub fn is_zeros(&self) -> bool {
+        self.data == [0., 0., 0.]
+    }
+
+    /// Check if the vector is all ones.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::vecmath::Vec3;
+    ///
+    /// let v = Vec3::ones();
+    ///
+    /// assert!(v.is_ones());
+    /// ```
+    pub fn is_ones(&self) -> bool {
+        self.data == [1., 1., 1.]
+    }
+
+    /// Construct an orthonormal basis from a single vector.
+    ///
+    /// The basis will be right-handed when taking the passed in vector as the
+    /// z-axis and returned vectors as the x- and y-axis respectively.
+    ///
+    /// For a given normal axis this function should always return the same
+    /// basis, but it is not guaranteed the vectors that are close will produce
+    /// basis that are close.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rayrs_lib::vecmath::{Cross, Vec3};
+    ///
+    /// let z = Vec3::unit_z();
+    /// let (x, y) = Vec3::orthonormal_basis(z);
+    ///
+    /// assert_eq!(x.cross(y), z);
+    /// ```
+    pub fn orthonormal_basis(normal: Unit<Vector<f64>>) -> (Unit<Vector<f64>>, Unit<Vector<f64>>) {
+        // Try to choose a vector that is not close to the normal.
+        let temp = if normal.x().abs() > 0.9 {
+            Vector::unit_y()
+        } else {
+            Vector::unit_x()
+        };
+
+        // Construct the basis to be right-handed.
+        let e1 = temp.cross(normal).unit();
+        let e2 = normal.cross(e1).unit();
+        (e1, e2)
+    }
+
+    /// Calculate `powf` for each component of the vector.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::vecmath::Vec3;
+    ///
+    /// let rgb_linear = Vec3::ones() * 0.5;
+    /// let rgb_gamma_corr = rgb_linear.powf(1. / 2.2);
+    ///
+    /// assert_eq!(
+    ///     Vec3::new(0.7297400528407231, 0.7297400528407231, 0.7297400528407231),
+    ///     rgb_gamma_corr
+    /// );
+    /// ```
+    pub fn powf(self, n: f64) -> Vector<f64> {
+        Vector {
+            data: [
+                self.data[0].powf(n),
+                self.data[1].powf(n),
+                self.data[2].powf(n),
+            ],
+        }
+    }
+
+    /// Clip the components of the vector.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::vecmath::Vec3;
+    ///
+    /// let v = Vec3::new(0., 1., 2.);
+    /// let v = v.clip(1., 1.);
+    ///
+    /// assert_eq!(Vec3::ones(), v);
+    /// ```
+    pub fn clip(self, min: f64, max: f64) -> Vector<f64> {
+        Vector {
+            data: [
+                self.data[0].min(max).max(min),
+                self.data[1].min(max).max(min),
+                self.data[2].min(max).max(min),
+            ],
+        }
+    }
+
+    /// Rotate the vector around the x, y and z-axis.
+    ///
+    /// The components of `rot` determines the number of radians to rotate in
+    /// each of the coordinate axis directions.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::vecmath::{Unit, Vec3, VecUnit};
+    /// use std::f64;
+    ///
+    /// let v = Vec3::new(0., 0., 1.);
+    /// let rot = Vec3::new(0., f64::consts::FRAC_PI_2, 0.);
+    ///
+    /// assert!((Vec3::unit_x() - v.rotate(rot)).mag2() < f64::EPSILON);
+    /// ```
+    pub fn rotate(self, rot: Vector<f64>) -> Vector<f64> {
+        Vector {
+            data: [
+                self.data[0] * rot.data[1].cos() * rot.data[2].cos()
+                    + self.data[1]
+                        * (rot.data[2].cos() * rot.data[0].sin() * rot.data[1].sin()
+                            - rot.data[0].cos() * rot.data[2].sin())
+                    + self.data[2]
+                        * (rot.data[0].cos() * rot.data[2].cos() * rot.data[1].sin()
+                            + rot.data[0].sin() * rot.data[2].sin()),
+                self.data[0] * rot.data[1].cos() * rot.data[2].sin()
+                    + self.data[1]
+                        * (rot.data[0].cos() * rot.data[2].cos()
+                            + rot.data[0].sin() * rot.data[1].sin() * rot.data[2].sin())
+                    + self.data[2]
+                        * (rot.data[0].cos() * rot.data[1].sin() * rot.data[2].sin()
+                            - rot.data[2].cos() * rot.data[0].sin()),
+                -self.data[0] * rot.data[1].sin()
+                    + self.data[1] * rot.data[1].cos() * rot.data[0].sin()
+                    + self.data[2] * rot.data[0].cos() * rot.data[1].cos(),
+            ],
+        }
+    }
+
+    /// Check if all the components of the vector are in an inclusive range.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::vecmath::Vec3;
+    ///
+    /// let rgb = Vec3::new(1., 0.5, 0.);
+    ///
+    /// assert!(rgb.xyz_in_range_inclusive(0., 1.));
+    /// ```
+    ///
+    /// ```
+    /// use rayrs_lib::vecmath::Vec3;
+    ///
+    /// let rgb = Vec3::new(2., 0.5, 0.);
+    ///
+    /// assert!(!rgb.xyz_in_range_inclusive(0., 1.));
+    /// ```
+    pub fn xyz_in_range_inclusive(&self, min: f64, max: f64) -> bool {
+        self.data[0] >= min
+            && self.data[0] <= max
+            && self.data[1] >= min
+            && self.data[1] <= max
+            && self.data[2] >= min
+            && self.data[2] <= max
     }
 }
 
@@ -209,117 +593,6 @@ impl Cross<Unit<Vector<f64>>> for Vector<f64> {
 
     fn cross(self, other: Unit<Vector<f64>>) -> Self::Output {
         self.cross(other.0)
-    }
-}
-
-pub type Vec3 = Vector<f64>;
-
-impl<T: Copy> Vector<T> {
-    pub fn new(x: T, y: T, z: T) -> Vector<T> {
-        Vector { data: [x, y, z] }
-    }
-
-    pub fn iter(&self) -> std::slice::Iter<T> {
-        self.data.iter()
-    }
-
-    pub fn iter_mut(&mut self) -> std::slice::IterMut<T> {
-        self.data.iter_mut()
-    }
-}
-
-impl Vector<f64> {
-    pub fn ones() -> Vector<f64> {
-        Vector { data: [1., 1., 1.] }
-    }
-
-    pub fn zeros() -> Vector<f64> {
-        Vector { data: [0., 0., 0.] }
-    }
-
-    pub fn unit_x() -> Unit<Vector<f64>> {
-        Unit(Vector { data: [1., 0., 0.] })
-    }
-
-    pub fn unit_y() -> Unit<Vector<f64>> {
-        Unit(Vector { data: [0., 1., 0.] })
-    }
-
-    pub fn unit_z() -> Unit<Vector<f64>> {
-        Unit(Vector { data: [0., 0., 1.] })
-    }
-
-    pub fn is_zeros(&self) -> bool {
-        self.data == [0., 0., 0.]
-    }
-
-    pub fn is_ones(&self) -> bool {
-        self.data == [1., 1., 1.]
-    }
-
-    pub fn orthonormal_basis(normal: Unit<Vector<f64>>) -> (Unit<Vector<f64>>, Unit<Vector<f64>>) {
-        let normal = normal.as_vec();
-        let temp = if normal.data[0].abs() > 0.9 {
-            Vector::new(0., 1., 0.)
-        } else {
-            Vector::new(1., 0., 0.)
-        };
-        let e1 = temp.cross(normal).unit();
-        let e2 = normal.cross(e1.as_vec()).unit();
-        (e1, e2)
-    }
-
-    pub fn powf(self, n: f64) -> Vector<f64> {
-        Vector {
-            data: [
-                self.data[0].powf(n),
-                self.data[1].powf(n),
-                self.data[2].powf(n),
-            ],
-        }
-    }
-
-    pub fn clip(self, min: f64, max: f64) -> Vector<f64> {
-        Vector {
-            data: [
-                self.data[0].min(max).max(min),
-                self.data[1].min(max).max(min),
-                self.data[2].min(max).max(min),
-            ],
-        }
-    }
-
-    pub fn rotate(self, rot: Vector<f64>) -> Vector<f64> {
-        Vector {
-            data: [
-                self.data[0] * rot.data[1].cos() * rot.data[2].cos()
-                    + self.data[1]
-                        * (rot.data[2].cos() * rot.data[0].sin() * rot.data[1].sin()
-                            - rot.data[0].cos() * rot.data[2].sin())
-                    + self.data[2]
-                        * (rot.data[0].cos() * rot.data[2].cos() * rot.data[1].sin()
-                            + rot.data[0].sin() * rot.data[2].sin()),
-                self.data[0] * rot.data[1].cos() * rot.data[2].sin()
-                    + self.data[1]
-                        * (rot.data[0].cos() * rot.data[2].cos()
-                            + rot.data[0].sin() * rot.data[1].sin() * rot.data[2].sin())
-                    + self.data[2]
-                        * (rot.data[0].cos() * rot.data[1].sin() * rot.data[2].sin()
-                            - rot.data[2].cos() * rot.data[0].sin()),
-                -self.data[0] * rot.data[1].sin()
-                    + self.data[1] * rot.data[1].cos() * rot.data[0].sin()
-                    + self.data[2] * rot.data[0].cos() * rot.data[1].cos(),
-            ],
-        }
-    }
-
-    pub fn xyz_in_range_inclusive(&self, min: f64, max: f64) -> bool {
-        self.data[0] >= min
-            && self.data[0] <= max
-            && self.data[1] >= min
-            && self.data[1] <= max
-            && self.data[2] >= min
-            && self.data[2] <= max
     }
 }
 
