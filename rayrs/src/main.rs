@@ -1,5 +1,4 @@
-/// A path tracer that generates images based on simulating light as paths.
-///
+//! A path tracer that generates images based on simulating light as paths.
 use rayrs_lib::image::{Image, ImageBlock};
 use rayrs_lib::test_scenes;
 use rayrs_lib::vecmath::Vec3;
@@ -17,7 +16,7 @@ use image::{self, ColorType, ImageError, Rgb};
 
 use rayon::prelude::*;
 
-/// Samples per pixel.
+/// Default samples per pixel.
 const SPP: u32 = 2000;
 
 /// Generate an image from a scene.
@@ -132,8 +131,8 @@ fn main() -> Result<(), ImageError> {
     //     spp,
     //     test_scenes::copper_single_sphere,
     // )?;
-    // generate_image(&hdri, "glass_sphere", spp, test_scenes::glass_single_sphere)?;
-    // generate_image(
+    // generate_image(&hdri, "glass_sphere", spp,
+    // test_scenes::glass_single_sphere)?; generate_image(
     //     &hdri,
     //     "spheres_metallic",
     //     spp,
@@ -165,6 +164,6 @@ fn main() -> Result<(), ImageError> {
     //     spp,
     //     test_scenes::cook_torrance_spheres_cook_torrance_refract,
     // )?;
-    // generate_image(hdri, "material_test", spp, test_scenes::material_test)
-    generate_image(&hdri, "dragon", spp, test_scenes::sphere_dragon)
+    generate_image(hdri, "material_test", spp, test_scenes::material_test)
+    // generate_image(&hdri, "dragon", spp, test_scenes::sphere_dragon)
 }
