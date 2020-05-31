@@ -1,3 +1,5 @@
+//! Test scenes
+
 use super::bvh::BvhHeuristic;
 use super::geometry::Axis;
 use super::image::Image;
@@ -52,6 +54,11 @@ pub fn copper_single_sphere(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Sc
 
 pub fn glass_single_sphere(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
     let mat = Material::Glass(Glass::new(Vec3::ones() * 0.8, 1.45));
+    single_sphere(z_near, z_far, hdri, mat)
+}
+
+pub fn diffuse_single_sphere(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
+    let mat = Material::LambertianDiffuse(LambertianDiffuse::new(Vec3::ones() * 0.8));
     single_sphere(z_near, z_far, hdri, mat)
 }
 
@@ -150,21 +157,12 @@ pub fn copper_suzanne(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
         Fresnel::SchlickMetallic(Vec3::new(0.722, 0.451, 0.2)),
     ));
 
-    obj_scene(z_near, z_far, hdri, mat, "suzanne.obj")
+    obj_scene(z_near, z_far, hdri, mat, "models/suzanne.obj")
 }
 
 pub fn glass_suzanne(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
-    let mat = Material::Glass(Glass::new(Vec3::ones() * 0.8, 1.45));
-    obj_scene(z_near, z_far, hdri, mat, "suzanne.obj")
-}
-
-pub fn sphere_dragon(z_near: f64, z_far: f64, hdri: Image) -> (Camera, Scene) {
-    let mat = Material::CookTorrance(CookTorrance::new(
-        Vec3::ones(),
-        0.02,
-        Fresnel::SchlickMetallic(Vec3::new(0.2, 0.4, 0.9)),
-    ));
-    obj_scene_sphere(z_near, z_far, hdri, mat, "dragon.obj", 0.025)
+    let mat = Material::Glass(Glass::new(Vec3::ones(), 1.45));
+    obj_scene(z_near, z_far, hdri, mat, "models/suzanne.obj")
 }
 
 fn multiple_spheres(z_near: f64, z_far: f64, hdri: Image, mats: Vec<Material>) -> (Camera, Scene) {
