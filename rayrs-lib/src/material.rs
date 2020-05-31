@@ -20,7 +20,7 @@
 //!
 //! ```
 //! use rayrs_lib::material::{LambertianDiffuse, Material, ScatteringEvent};
-//! use rayrs_lib::vecmath::Vec3;
+//! use rayrs_lib::vecmath::{Vec3, VecUnit};
 //!
 //! let mat = Material::LambertianDiffuse(LambertianDiffuse::new(Vec3::ones() * 0.8));
 //!
@@ -75,11 +75,9 @@ impl Material {
     ///
     /// # Examples
     /// ```
-    /// use rayrs_lib::material::{LambertianDiffuse, Material, ScatteringEvent};
-    /// use rayrs_lib::vecmath::{Vec3, VecUnit};
-    ///
-    /// let mat = Material::LambertianDiffuse(LambertianDiffuse::new(Vec3::ones() * 0.8));
-    ///
+    /// # use rayrs_lib::material::{LambertianDiffuse, Material, ScatteringEvent};
+    /// # use rayrs_lib::vecmath::{Vec3, VecUnit};
+    /// # let mat = Material::LambertianDiffuse(LambertianDiffuse::new(Vec3::ones() * 0.8));
     /// // Hypothetical intersection
     /// let position = Vec3::zeros();
     /// let normal = Vec3::unit_z();
@@ -1148,6 +1146,7 @@ impl MicrofacetDistribution {
     ///
     /// # Note
     /// This function can return 0.
+    #[allow(dead_code)]
     fn value(&self, normal: Unit<Vec3>, halfway_vec: Unit<Vec3>) -> f64 {
         match self {
             Self::Beckmann(alpha2) => {
