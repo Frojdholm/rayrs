@@ -1,3 +1,5 @@
+//! rayrs_lib provides the core functionality of the ray-tracer.
+
 pub mod bvh;
 pub mod geometry;
 pub mod image;
@@ -18,17 +20,24 @@ use bvh::{Bvh, BvhHeuristic, RayIntersection};
 use std::f64::consts::PI;
 use std::ops::Range;
 
+/// Representation of a ray with an origin and direction.
 #[derive(Debug, Copy, Clone)]
 pub struct Ray {
+    /// Ray origin
     pub origin: Vec3,
+    /// Ray direction
+    ///
+    /// Note that the direction is not normalized.
     pub direction: Vec3,
 }
 
 impl Ray {
+    /// Create a new ray.
     fn new(origin: Vec3, direction: Vec3) -> Ray {
         Ray { origin, direction }
     }
 
+    /// Get the point along the parametric line defined by the ray.
     fn point(&self, t: f64) -> Vec3 {
         self.origin + self.direction * t
     }
@@ -42,6 +51,7 @@ impl Ray {
     // }
 }
 
+/// Pinhole camera model.
 #[derive(Debug)]
 pub struct Camera {
     origin: Vec3,
@@ -57,6 +67,35 @@ pub struct Camera {
 }
 
 impl Camera {
+    /// Create a new Camera.
+    ///
+    /// The `fov` is the field of view in degrees in the x-direction. The unit
+    /// of `width` and `height` is centimeters and internally the
+    /// pixels-per-inch, ppi, is converted to pixels-per-centimeters, ppc.
+    ///
+    /// The up-direction is most commonly chosen to be the y- or z-axis.
+    ///
+    /// # Panics
+    /// - If `fov` is not in the range (0, 180) degrees.
+    /// - If `width` is not positive.
+    /// - If `height` is not positive.
+    /// - If `origin` and `lookat` are the same.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::vecmath::Vec3;
+    /// use rayrs_lib::Camera;
+    ///
+    /// let camera = Camera::new(
+    ///     Vec3::ones(),
+    ///     Vec3::unit_y().as_vec(),
+    ///     Vec3::zeros(),
+    ///     90.,
+    ///     20.,
+    ///     10.,
+    ///     90,
+    /// );
+    /// ```
     pub fn new(
         origin: Vec3,
         up: Vec3,
@@ -73,6 +112,8 @@ impl Camera {
 
         let ppc = ((ppi as f64) * 2.54).round() as u32;
 
+        // Construct the right-handed coordinate system. The x-axis will point
+        // to the left since `z` points out from the camera origin.
         let z = (lookat - origin).unit();
         let x = up.cross(z).unit();
         let y = z.cross(x).unit();
@@ -91,14 +132,73 @@ impl Camera {
         }
     }
 
+    /// Get the number of pixels in the x-direction.
+    ///
+    /// # Examples
+    /// ```
+    /// # use rayrs_lib::Camera;
+    /// # use rayrs_lib::vecmath::Vec3;
+    /// let camera = Camera::new(
+    ///     Vec3::ones(),
+    ///     Vec3::unit_y().as_vec(),
+    ///     Vec3::zeros(),
+    ///     90.,
+    ///     20.,
+    ///     10.,
+    ///     90,
+    /// );
+    /// let pixels = camera.x_pixels();
+    /// assert_eq!(pixels, 4580);
+    /// ```
     pub fn x_pixels(&self) -> usize {
         (self.width * (self.ppc as f64)).round() as usize
     }
 
+    /// Get the number of pixels in the y-direction.
+    ///
+    /// # Examples
+    /// ```
+    /// # use rayrs_lib::Camera;
+    /// # use rayrs_lib::vecmath::Vec3;
+    /// let camera = Camera::new(
+    ///     Vec3::ones(),
+    ///     Vec3::unit_y().as_vec(),
+    ///     Vec3::zeros(),
+    ///     90.,
+    ///     20.,
+    ///     10.,
+    ///     90,
+    /// );
+    /// let pixels = camera.y_pixels();
+    /// assert_eq!(pixels, 2290);
+    /// ```
     pub fn y_pixels(&self) -> usize {
         (self.height * (self.ppc as f64)).round() as usize
     }
 
+    /// Generate a ray from the camera origin.
+    ///
+    /// # Note
+    /// The pixel indices should be within the pixel bounds, otherwise the ray
+    /// generate will be outside of the image.
+    ///
+    /// # Examples
+    /// ```
+    /// # use rayrs_lib::{Camera, Ray};
+    /// # use rayrs_lib::vecmath::Vec3;
+    /// let camera = Camera::new(
+    ///     Vec3::ones(),
+    ///     Vec3::unit_y().as_vec(),
+    ///     Vec3::zeros(),
+    ///     90.,
+    ///     20.,
+    ///     10.,
+    ///     90,
+    /// );
+    ///
+    /// // Generate a random ray through the first pixel of the image.
+    /// let ray = camera.generate_primary_ray(0, 0);
+    /// ```
     pub fn generate_primary_ray(&self, i: usize, j: usize) -> Ray {
         let i: f64 = i as f64;
         let j: f64 = j as f64;
@@ -110,36 +210,9 @@ impl Camera {
     }
 }
 
-// #[derive(Debug)]
-// struct ListAccelerator {
-//     objects: Vec<Object>,
-// }
-
-// impl ListAccelerator {
-//     fn new(objects: Vec<Object>) -> Self {
-//         ListAccelerator { objects }
-//     }
-
-//     fn intersect(&self, ray: Ray, tmin: f64, tmax: f64) -> Option<(f64, Object)> {
-//         let mut t = tmax;
-//         let mut obj = None;
-//         for child in &self.objects {
-//             if let Some(t_hit) = child.geom.intersect(ray) {
-//                 if t_hit > tmin && t_hit < t {
-//                     t = t_hit;
-//                     obj = Some((*child).clone());
-//                 }
-//             }
-//         }
-
-//         if obj.is_some() {
-//             Some((t, obj.unwrap()))
-//         } else {
-//             None
-//         }
-//     }
-// }
-
+/// The scene representation.
+///
+/// The `Scene` contains all the objects and other information about the scene.
 pub struct Scene {
     bvh: Bvh,
     t_range: Range<f64>,
@@ -147,6 +220,10 @@ pub struct Scene {
 }
 
 impl Scene {
+    /// Create a new Scene from a list of objects.
+    ///
+    /// # Panics
+    /// If `z_near` is not positive or larger than `z_far`.
     pub fn new(
         objects: Vec<Object>,
         z_near: f64,
@@ -167,215 +244,24 @@ impl Scene {
         }
     }
 
-    // pub fn fresnel_test(z_near: f64, z_far: f64, hdri: Image) -> Self {
-    //     let white = Material::Diffuse(1., Vec3::ones());
-    //     let black = Material::Diffuse(1., Vec3::zeros());
-    //     let mix = Material::Mix(MixKind::Fresnel(1.5), Box::new(black), Box::new(white));
-
-    //     let sphere = Object::sphere(0.1, Vec3::zeros(), mix, Emission::Dark);
-
-    //     Scene::new(
-    //         vec![sphere],
-    //         z_near,
-    //         z_far,
-    //         BvhHeuristic::Sah { splits: 1000 },
-    //         hdri,
-    //     )
-    // }
-
-    // pub fn bvh_test(z_near: f64, z_far: f64, hdri: Image) -> Self {
-    //     let max_spheres = 500;
-    //     let mut rng = rand::thread_rng();
-
-    //     let mut objects = Vec::with_capacity(max_spheres);
-
-    //     for _ in 0..max_spheres {
-    //         let sphere = Object::sphere(
-    //             rng.gen_range(0.5, 1.),
-    //             Vec3::new(
-    //                 rng.gen_range(-10., 10.),
-    //                 rng.gen_range(-1., 20.),
-    //                 rng.gen_range(-20., 0.),
-    //             ),
-    //             Material::Diffuse(
-    //                 1.,
-    //                 Vec3::new(
-    //                     rng.gen_range(0.1, 0.9),
-    //                     rng.gen_range(0.1, 0.9),
-    //                     rng.gen_range(0.1, 0.9),
-    //                 ),
-    //             ),
-    //             Emission::Dark,
-    //         );
-
-    //         objects.push(sphere);
-    //     }
-
-    //     objects.push(Object::sphere(
-    //         10000.,
-    //         Vec3::new(0., -10001., 0.),
-    //         Material::Diffuse(1., Vec3::ones()),
-    //         Emission::Dark,
-    //     ));
-
-    //     let light = Object::plane(
-    //         Axis::YRev,
-    //         -0.8,
-    //         0.8,
-    //         -0.8,
-    //         0.8,
-    //         2.4999,
-    //         Material::NoReflect,
-    //         Emission::Emissive(5., Vec3::ones()),
-    //     );
-    //     objects.push(light);
-
-    //     Scene::new(
-    //         objects,
-    //         z_near,
-    //         z_far,
-    //         BvhHeuristic::Sah { splits: 1000 },
-    //         hdri,
-    //     )
-    // }
-
-    // pub fn cornell_box(z_near: f64, z_far: f64, hdri: Image) -> Self {
-    //     let green = Material::Diffuse(1., Vec3::unit_y());
-    //     let red = Material::Diffuse(1., Vec3::unit_x());
-    //     let white = Material::Diffuse(1., Vec3::ones());
-    //     let mirror = Material::Mirror(1., Vec3::ones());
-    //     let mix = Material::Mix(
-    //         MixKind::Fresnel(1.5),
-    //         Box::new(mirror),
-    //         Box::new(white.clone()),
-    //     );
-    //     let cook_torrance = Material::CookTorrance {
-    //         m: 0.5,
-    //         color: Vec3::new(0.8, 0.8, 0.8), //Vec3::new(0.722, 0.451, 0.2),
-    //     };
-
-    //     let left = Object::plane(Axis::X, -2.5, 2.5, -2.5, 2.5, -2.5, red, Emission::Dark);
-    //     let right = Object::plane(Axis::XRev, -2.5, 2.5, -2.5, 2.5, 2.5, green, Emission::Dark);
-    //     let top = Object::plane(
-    //         Axis::YRev,
-    //         -2.5,
-    //         2.5,
-    //         -2.5,
-    //         2.5,
-    //         2.5,
-    //         white.clone(),
-    //         Emission::Dark,
-    //     );
-    //     let bottom = Object::plane(
-    //         Axis::Y,
-    //         -2.5,
-    //         2.5,
-    //         -2.5,
-    //         2.5,
-    //         -2.5,
-    //         white.clone(),
-    //         Emission::Dark,
-    //     );
-    //     let back = Object::plane(
-    //         Axis::Z,
-    //         -2.5,
-    //         2.5,
-    //         -2.5,
-    //         2.5,
-    //         -2.5,
-    //         white.clone(),
-    //         Emission::Dark,
-    //     );
-    //     let light = Object::plane(
-    //         Axis::YRev,
-    //         -0.8,
-    //         0.8,
-    //         -0.8,
-    //         0.8,
-    //         2.4999,
-    //         Material::NoReflect,
-    //         Emission::Emissive(5., Vec3::ones()),
-    //     );
-
-    //     let sphere1 = Object::sphere(0.5, Vec3::new(-1., -2., 0.5), mix, Emission::Dark);
-    //     let sphere2 = Object::sphere(
-    //         1.,
-    //         Vec3::new(0.5, -1.5, -1.3),
-    //         cook_torrance,
-    //         Emission::Dark,
-    //     );
-
-    //     let objects = vec![left, right, top, bottom, back, light, sphere1, sphere2];
-    //     Scene::new(objects, z_near, z_far, BvhHeuristic::Midpoint, hdri)
-    // }
-
-    // pub fn dragon(z_near: f64, z_far: f64, hdri: Image) -> Self {
-    //     let green = Material::Diffuse(1., Vec3::new(0., 1., 0.));
-    //     let red = Material::Diffuse(1., Vec3::new(1., 0., 0.));
-    //     let white = Material::Diffuse(1., Vec3::new(1., 1., 1.));
-    //     let mirror = Material::Mirror(1., Vec3::new(1., 1., 1.));
-    //     let mix = Material::Mix(
-    //         MixKind::Fresnel(1.5),
-    //         Box::new(mirror),
-    //         Box::new(white.clone()),
-    //     );
-
-    //     let left = Object::plane(Axis::X, -2.5, 2.5, -2.5, 2.5, -2.5, red, Emission::Dark);
-    //     let right = Object::plane(Axis::XRev, -2.5, 2.5, -2.5, 2.5, 2.5, green, Emission::Dark);
-    //     let top = Object::plane(
-    //         Axis::YRev,
-    //         -2.5,
-    //         2.5,
-    //         -2.5,
-    //         2.5,
-    //         2.5,
-    //         white.clone(),
-    //         Emission::Dark,
-    //     );
-    //     let bottom = Object::plane(
-    //         Axis::Y,
-    //         -2.5,
-    //         2.5,
-    //         -2.5,
-    //         2.5,
-    //         -2.5,
-    //         white.clone(),
-    //         Emission::Dark,
-    //     );
-    //     let back = Object::plane(Axis::Z, -2.5, 2.5, -2.5, 2.5, -2.5, white, Emission::Dark);
-    //     let light = Object::plane(
-    //         Axis::YRev,
-    //         -0.8,
-    //         0.8,
-    //         -0.8,
-    //         0.8,
-    //         2.4999,
-    //         Material::NoReflect,
-    //         Emission::Emissive(5., Vec3::new(1., 1., 1.)),
-    //     );
-
-    //     let dragon = wavefront_obj::load_obj_file("dragon.obj").unwrap();
-    //     let mut dragon = Object::from_triangles(dragon, mix, Emission::Dark);
-    //     let mut objects = vec![left, right, top, bottom, back, light];
-    //     objects.append(&mut dragon);
-    //     Scene::new(
-    //         objects,
-    //         z_near,
-    //         z_far,
-    //         BvhHeuristic::Sah { splits: 1000 },
-    //         hdri,
-    //     )
-    // }
-
-    pub fn background(&self, dir: Vec3) -> Vec3 {
+    /// Get the background color for this direction.
+    ///
+    /// This function maps the direction to spherical coordinates and uses those
+    /// to fetch a pixel from the HDRI. The pixels are bilinearly interpolated.
+    ///
+    /// # Note
+    /// The function assumes that the up direction is the y-coordinate.
+    fn background(&self, dir: Vec3) -> Vec3 {
         let dir = dir.unit();
 
         let phi = dir.z().atan2(dir.x()) + PI;
         let theta = dir.y().acos();
 
+        // Get a coordinate between [0, width-2] x [0, height-2].
         let x = phi / (2. * PI) * (self.hdri.width() - 1) as f64;
         let y = theta / PI * (self.hdri.height() - 1) as f64;
 
+        // Get the neighboring pixel coordinates.
         let x_f = x.floor();
         let x_c = x.ceil();
         let y_f = y.floor();
@@ -391,18 +277,28 @@ impl Scene {
             self.hdri.pixel(i + 1, j + 1),
         ];
 
+        // Bilinear interpolation
         f[0] * (x_c - x) * (y_c - y)
             + f[1] * (x_c - x) * (y - y_f)
             + f[2] * (x - x_f) * (y_c - y)
             + f[3] * (x - x_f) * (y - y_f)
     }
 
-    pub fn sky(&self, dir: Vec3) -> Vec3 {
+    /// Get the background color as a mix between white and blue.
+    ///
+    /// # Note
+    /// The function assumes that the up direction is the y-coordinate.
+    #[allow(dead_code)]
+    fn sky(&self, dir: Vec3) -> Vec3 {
         let y = 0.5 * dir.unit().y() + 1.;
         return 2.0 * (y * Vec3::new(0.5, 0.5, 1.0) + (1. - y) * Vec3::ones());
     }
 }
 
+/// An object in the scene.
+///
+/// Represents an object with the necessary information to do intersection tests
+/// and get surface properties at the intersection.
 pub struct Object {
     geom: Box<dyn Hittable + Sync>,
     mat: Material,
@@ -410,6 +306,18 @@ pub struct Object {
 }
 
 impl Object {
+    /// Create a sphere object.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::vecmath::Vec3;
+    /// use rayrs_lib::Object;
+    /// # use rayrs_lib::material::{Material, Emission, LambertianDiffuse};
+    /// # let mat = Material::LambertianDiffuse(LambertianDiffuse::new(Vec3::ones()));
+    /// # let emission = Emission::Dark;
+    /// // `mat` and `emission` created previously.
+    /// let sphere = Object::sphere(0.1, Vec3::zeros(), mat, emission);
+    /// ```
     pub fn sphere(radius: f64, origin: Vec3, mat: Material, emission: Emission) -> Object {
         Object {
             geom: Box::new(Sphere::new(radius, origin)),
@@ -418,6 +326,19 @@ impl Object {
         }
     }
 
+    /// Create a plane object.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::geometry::Axis;
+    /// use rayrs_lib::vecmath::Vec3;
+    /// use rayrs_lib::Object;
+    /// # use rayrs_lib::material::{Material, Emission, LambertianDiffuse};
+    /// # let mat = Material::LambertianDiffuse(LambertianDiffuse::new(Vec3::ones()));
+    /// # let emission = Emission::Dark;
+    /// // `mat` and `emission` created previously.
+    /// let plane = Object::plane(Axis::Y, -1., , 1., -1., 1., 0., mat, emission);
+    /// ```
     pub fn plane(
         axis: Axis,
         umin: f64,
@@ -435,6 +356,27 @@ impl Object {
         }
     }
 
+    /// Create a triangle object.
+    ///
+    /// # Note
+    /// The winding order of the vertices is counter-clockwise.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::vecmath::Vec3;
+    /// use rayrs_lib::Object;
+    /// # use rayrs_lib::material::{Material, Emission, LambertianDiffuse};
+    /// # let mat = Material::LambertianDiffuse(LambertianDiffuse::new(Vec3::ones()));
+    /// # let emission = Emission::Dark;
+    /// // `mat` and `emission` created previously.
+    /// let tri = Object::triangle(
+    ///     Vec3::new(-1., 0., 0.),
+    ///     Vec3::new(1., 0., 0.),
+    ///     Vec3::new(0., 1., 0.),
+    ///     mat,
+    ///     emission,
+    /// );
+    /// ```
     pub fn triangle(p1: Vec3, p2: Vec3, p3: Vec3, mat: Material, emission: Emission) -> Object {
         Object {
             geom: Box::new(Triangle::new(p1, p2, p3)),
@@ -443,6 +385,25 @@ impl Object {
         }
     }
 
+    /// Create a list of triangle objects.
+    ///
+    /// Used for making objects out of for example triangle meshes.
+    ///
+    /// # Note
+    /// The winding order of the vertices is counter-clockwise.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::vecmath::Vec3;
+    /// use rayrs_lib::Object;
+    /// # use rayrs_lib::material::{Material, Emission, LambertianDiffuse};
+    /// # let mat = Material::LambertianDiffuse(LambertianDiffuse::new(Vec3::ones()));
+    /// # let emission = Emission::Dark;
+    /// # let tris = Vec::new();
+    /// // `mat` and `emission` created previously.
+    /// // load mesh into `tris`
+    /// let tri_objects = Object::from_triangles(tris, mat, emission);
+    /// ```
     pub fn from_triangles(tris: Vec<Triangle>, mat: Material, emission: Emission) -> Vec<Object> {
         tris.into_iter()
             .map(|item| Object {
@@ -453,6 +414,11 @@ impl Object {
             .collect()
     }
 
+    /// Create a list of sphere objects.
+    ///
+    /// Works the same as [`Object::from_triangles`], but for spheres instead.
+    ///
+    /// [`Object::from_triangles`]: ../struct.Object.html#method.from_triangles
     pub fn from_spheres(spheres: Vec<Sphere>, mat: Material, emission: Emission) -> Vec<Object> {
         spheres
             .into_iter()
@@ -464,6 +430,11 @@ impl Object {
             .collect()
     }
 
+    /// Create a box.
+    ///
+    /// Creates a box that spans the lower left corner to the upper right
+    /// corner. It works by creating a list of plane objects that define the
+    /// box.
     pub fn box_geom(
         lower_left: Vec3,
         upper_right: Vec3,
@@ -534,11 +505,19 @@ impl Object {
         ]
     }
 
+    /// Get the bounding box of the contained geometry.
     pub fn bbox(&self) -> AxisAlignedBoundingBox {
         self.geom.bbox()
     }
 }
 
+/// Calculate the radiance of the scene at the ray origin.
+///
+/// The function performs up to `max_bounces` ray bounces, calculating the total
+/// contribution at the intial ray origin. The maximum number of bounces can be
+/// set quite high since the rays are also terminated using Russian Roulette.
+///
+/// Importance sampling of the BSDFs in the scene is done to reduce variance.
 pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32) -> Vec3 {
     let mut throughput = Vec3::ones();
     let mut light = Vec3::zeros();
@@ -562,11 +541,17 @@ pub fn radiance(s: &Scene, mut r: Ray, max_bounces: u32) -> Vec3 {
                     }
 
                     throughput /= p;
+
+                    // Assign the new ray and go to the next iteration.
                     r = ray;
                 }
+                // If for some reason we shouldn't continue we just return the
+                // total amount of light gathered so far.
                 ScatteringEvent::NoScatter => return light,
             }
         } else {
+            // We missed the scene so return the light with the background
+            // color.
             return light + throughput * s.background(r.direction);
         }
     }
