@@ -53,25 +53,39 @@ where
 
     let width = c.x_pixels();
     let height = c.y_pixels();
+    // Use 16x16 blocks.
     let (x_size, y_size, blocks) = Image::blocks(width, height, 64);
 
     let now = Instant::now();
+    // Parallelized using rayon parallel iterators.
     let blocks: Vec<ImageBlock> = blocks
         .into_par_iter()
         .map(|mut image| {
+            // Work on a single image block.
             for j in 0..image.width() {
                 for i in 0..image.height() {
-                    let mut pixel = Vec3::new(0., 0., 0.);
+                    let mut pixel = Vec3::zeros();
                     for _ in 0..spp {
                         pixel += rayrs_lib::radiance(
                             &s,
                             c.generate_primary_ray(
+                                // Image origin is upper left while camera
+                                // origin is lower right.
                                 height - i - image.offset_y(),
                                 width - j - image.offset_x(),
                             ),
                             50,
                         );
                     }
+
+                    if pixel.x().is_nan() || pixel.y().is_nan() || pixel.z().is_nan() {
+                        eprintln!("NaN pixel detected");
+                    }
+
+                    if pixel.x() < 0. || pixel.y() < 0. || pixel.z() < 0. {
+                        eprintln!("Negative pixel detected");
+                    }
+
                     image.set_pixel(i, j, pixel / spp as f64);
                 }
             }
@@ -86,6 +100,7 @@ where
     );
     let image = Image::from_blocks(&blocks, x_size, y_size, width, height);
 
+    // Save png
     image::save_buffer(
         format!("{}.png", outbase),
         &image.to_raw_bytes(1. / 2.2),
@@ -94,6 +109,7 @@ where
         ColorType::Rgb8,
     )?;
 
+    // Save HDR
     let outfile = File::create(format!("{}.hdr", outbase))?;
     let encoder = HDREncoder::new(outfile);
     let (width, height) = (image.width(), image.height());
@@ -105,6 +121,7 @@ where
     encoder.encode(&pixels, width, height)
 }
 
+/// Parse command line arguments.
 fn parse_commandline(mut args: env::Args) -> Result<(String, u32), &'static str> {
     if args.len() < 2 {
         return Err("Usage: rayrs hdri_path [spp]");
