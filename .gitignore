@@ -1,3 +1,10 @@
 /target
 
+venv/
+
 *.ppm
+*.png
+*.hdr
+*.ply
+*.obj
+*~
