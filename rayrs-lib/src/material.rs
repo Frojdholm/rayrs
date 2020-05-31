@@ -342,7 +342,7 @@ impl Bsdf for Glass {
         position: Vec3,
         normal: Unit<Vec3>,
         view: Unit<Vec3>,
-        pdf: Option<Pdf>,
+        _pdf: Option<Pdf>,
     ) -> ScatteringEvent {
         // The glass material will mix between the refract and reflection
         // based on the fresnel coefficient.
@@ -355,14 +355,20 @@ impl Bsdf for Glass {
             ScatteringDirection::Exiting
         };
 
-        let cos_theta = cos_theta.abs();
+        let normal = direction.normal(normal);
 
-        let sin_theta = (1. - cos_theta * cos_theta).sqrt();
+        let sin2theta = 1. - cos_theta * cos_theta;
         let ior_ratio = direction.ior_ratio(self.ior);
 
-        if ior_ratio * sin_theta > 1. {
+        if ior_ratio * ior_ratio * sin2theta >= 1. {
             // Total internal reflection
-            self.reflect.scatter(position, normal, view, pdf)
+            let light = reflect(normal, view);
+            let color = self.reflect.brdf(position, normal, light, view) * normal.dot(light);
+
+            ScatteringEvent::Scatter {
+                color,
+                ray: Ray::new(position, light.as_vec()),
+            }
         } else {
             let (ior_curr, ior_new) = direction.iors(self.ior);
             let fresnel = schlick_scalar(ior_curr, ior_new, normal, view);
@@ -371,12 +377,24 @@ impl Bsdf for Glass {
             // reflection or refraction. The Fresnel coefficient cancels due to
             // the importance sampling.
             if rand::random::<f64>() < fresnel {
-                self.reflect.scatter(position, normal, view, pdf) //
-                                                                  // * fresnel /
-                                                                  //   fresnel
+                let light = reflect(normal, view);
+                let color = self.reflect.brdf(position, normal, light, view) * normal.dot(light);
+
+                ScatteringEvent::Scatter {
+                    color, // * fresnel / fresnel
+                    ray: Ray::new(position, light.as_vec()),
+                }
             } else {
-                self.refract.scatter(position, normal, view, pdf) //
-                                                                  // * (1 - fresnel) / (1 - fresnel)
+                let light = refract(normal, view, ior_ratio).unwrap();
+                let color = self
+                    .refract
+                    .btdf(position, normal, light, view, direction, 1.)
+                    * normal.dot(light).abs();
+
+                ScatteringEvent::Scatter {
+                    color, // * (1 - fresnel) / (1 - fresnel)
+                    ray: Ray::new(position, light.as_vec()),
+                }
             }
         }
     }
