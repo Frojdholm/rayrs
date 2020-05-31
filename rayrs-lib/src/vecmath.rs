@@ -493,19 +493,20 @@ impl<T: Copy> VecElements<T> for Vector<T> {
 }
 
 impl VecUnit for Unit<Vector<f64>> {
+    // TODO: Fix floating point so that this can use shortcuts such as mag == 1
     type Output = f64;
     type VecOutput = Vector<f64>;
 
     fn mag(self) -> Self::Output {
-        1.
+        self.0.mag()
     }
 
     fn mag2(self) -> Self::Output {
-        1.
+        self.0.mag2()
     }
 
     fn unit(self) -> Unit<Self::VecOutput> {
-        self
+        self.0.unit()
     }
 }
 
