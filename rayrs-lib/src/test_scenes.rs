@@ -108,6 +108,7 @@ fn obj_scene(
     )
 }
 
+#[allow(dead_code)]
 fn obj_scene_sphere(
     z_near: f64,
     z_far: f64,

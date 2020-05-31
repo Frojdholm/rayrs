@@ -89,7 +89,7 @@ impl Unit<Vector<f64>> {
     /// Construct a new unit vector.
     ///
     /// # Note
-    /// The use must assure that the vector passed is in fact a unit vector.
+    /// The user must assure that the vector passed is in fact a unit vector.
     ///
     /// # Examples
     /// Creating unit vectors work the same as for the checked function.
