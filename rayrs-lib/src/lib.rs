@@ -337,7 +337,7 @@ impl Object {
     /// # let mat = Material::LambertianDiffuse(LambertianDiffuse::new(Vec3::ones()));
     /// # let emission = Emission::Dark;
     /// // `mat` and `emission` created previously.
-    /// let plane = Object::plane(Axis::Y, -1., , 1., -1., 1., 0., mat, emission);
+    /// let plane = Object::plane(Axis::Y, -1., 1., -1., 1., 0., mat, emission);
     /// ```
     pub fn plane(
         axis: Axis,
