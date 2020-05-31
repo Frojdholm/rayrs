@@ -1,3 +1,9 @@
+//! Basic shapes
+//
+// This modules contains the basic geometry primitives and functions for finding
+// intersection and gather intersection information. There are also functions
+// for sampling points on shapes.
+
 use super::vecmath::{Cross, Dot, Unit, Vec3, VecElements, VecUnit};
 use super::Object;
 use super::Ray;
@@ -5,14 +11,33 @@ use super::Ray;
 use std::f64::consts::PI;
 use std::ops::Range;
 
+/// Interface for participating in ray intersections.
 pub trait Hittable {
+    /// Ray intersection test
+    ///
+    /// # Returns
+    /// If the parametric line defined by the ray, o + t*d, intersects the
+    /// shape with a positive t `Some(t)` should be returned. Otherwise `None`
+    /// should be returned.
     fn intersect(&self, ray: Ray) -> Option<f64>;
+
+    /// Get the normal of the shape at some point `p`.
+    ///
+    /// If it is not necessary to verify that `p` is on the surface of the shape
+    /// if the normal can be calculated without this information.
     fn normal(&self, p: Vec3) -> Unit<Vec3>;
+
+    /// Get the area of the shape.
     fn area(&self) -> f64;
+
+    /// Sample a random point on the shape.
     fn sample(&self) -> Vec3;
+
+    /// Get the bounding box of the shape.
     fn bbox(&self) -> AxisAlignedBoundingBox;
 }
 
+/// A flipped instance of the contained geometry.
 #[derive(Debug)]
 pub struct Flipped<T: Hittable>(T);
 
@@ -44,6 +69,11 @@ impl<T: Hittable> Hittable for Flipped<T> {
     }
 }
 
+/// A sphere shape.
+///
+/// Generally spheres are created directly in an [`Object`].
+///
+/// [`Object`]: ../struct.Object.html
 #[derive(Debug)]
 pub struct Sphere {
     radius2: f64,
@@ -51,6 +81,18 @@ pub struct Sphere {
 }
 
 impl Sphere {
+    /// Create a new Sphere.
+    ///
+    /// # Panics
+    /// If the radius is not positive.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::geometry::Sphere;
+    /// use rayrs_lib::vecmath::Vec3;
+    ///
+    /// let sphere = Sphere::new(1., Vec3::zeros());
+    /// ```
     pub fn new(radius: f64, origin: Vec3) -> Sphere {
         assert!(radius > 0., "Radius has to be positive, r={}", radius);
         Sphere {
@@ -73,6 +115,8 @@ impl Hittable for Sphere {
         if desc > 0. {
             let t1 = (-b - desc.sqrt()) / (2. * a);
             let t2 = (-b + desc.sqrt()) / (2. * a);
+
+            // Choose the closest non-negative t.
             if t1 < 0. {
                 if t2 < 0. {
                     None
@@ -96,6 +140,7 @@ impl Hittable for Sphere {
     }
 
     fn sample(&self) -> Vec3 {
+        // FIXME: This is not uniform on the unit sphere...
         let u: f64 = rand::random();
         let phi: f64 = 2. * PI * rand::random::<f64>();
 
@@ -111,6 +156,7 @@ impl Hittable for Sphere {
     }
 }
 
+/// A coordnate axis in the local coordinate system.
 #[derive(Debug, Clone, Copy)]
 pub enum Axis {
     X,
@@ -121,6 +167,11 @@ pub enum Axis {
     ZRev,
 }
 
+/// A 2D axis-oriented plane.
+///
+/// Generally planes are created directly in an [`Object`].
+///
+/// [`Object`]: ../struct.Object.html
 #[derive(Debug)]
 pub struct Plane {
     u_range: Range<f64>,
@@ -130,6 +181,26 @@ pub struct Plane {
 }
 
 impl Plane {
+    /// Create a new Plane.
+    ///
+    /// `pos` is the position along the axis specified by `axis`. The position
+    /// is an absolute position and does not take into consideration the
+    /// direction of the axis, e.g. there is no difference between [`Axis::X`]
+    /// and [`Axis::XRev`].
+    ///
+    /// # Panics
+    /// If `umin >= umax` or `vmin >= vmax`.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::geometry::{Axis, Plane};
+    /// use rayrs_lib::vecmath::Vec3;
+    ///
+    /// let plane = Plane::new(Axis::X, -1., 1., -1., 1., 0.);
+    /// ```
+    ///
+    /// [`Axis::X`]: ../geometry/enum.Axis.html#variant.X
+    /// [`Axis::XRev`]: ../geometry/enum.Axis.html#variant.XRev
     pub fn new(axis: Axis, umin: f64, umax: f64, vmin: f64, vmax: f64, pos: f64) -> Plane {
         assert!(
             umin < umax && vmin < vmax,
@@ -232,8 +303,15 @@ impl Hittable for Plane {
     }
 }
 
+/// A triangle.
+///
+/// Generally triangles are created directly in an [`Object`].
+///
+/// [`Object`]: ../struct.Object.html
 #[derive(Debug)]
 pub struct Triangle {
+    // TODO: Make triangles more space efficient by only storing references to
+    // vertices.
     p1: Vec3,
     p2: Vec3,
     p3: Vec3,
@@ -244,6 +322,22 @@ pub struct Triangle {
 }
 
 impl Triangle {
+    /// Create a new Triangle.
+    ///
+    /// # Note
+    /// The winding order of the vertices is counter-clockwise.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::geometry::Triangle;
+    /// use rayrs_lib::vecmath::Vec3;
+    ///
+    /// let tri = Triangle::new(
+    ///     Vec3::new(-1., 0., 0.),
+    ///     Vec3::new(1., 0., 0.),
+    ///     Vec3::new(0., 1., 0.),
+    /// );
+    /// ```
     pub fn new(p1: Vec3, p2: Vec3, p3: Vec3) -> Triangle {
         let e1 = p2 - p1;
         let e2 = p3 - p1;
@@ -297,7 +391,8 @@ impl Hittable for Triangle {
     }
 }
 
-#[derive(Debug)]
+/// A bounding box that can contain a number of shapes.
+#[derive(Debug, PartialEq)]
 pub struct AxisAlignedBoundingBox {
     x_range: Range<f64>,
     y_range: Range<f64>,
@@ -305,6 +400,18 @@ pub struct AxisAlignedBoundingBox {
 }
 
 impl AxisAlignedBoundingBox {
+    /// Create a new AxisAlignedBoundingBox.
+    ///
+    /// # Panics
+    /// If any of the `min` values are greater than their respective `max`
+    /// value (equal is allowed).
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::geometry::AxisAlignedBoundingBox;
+    ///
+    /// let bbox = AxisAlignedBoundingBox::new(-1., 1., -1., 1., -1., 1.);
+    /// ```
     pub fn new(xmin: f64, xmax: f64, ymin: f64, ymax: f64, zmin: f64, zmax: f64) -> Self {
         assert!(xmin <= xmax);
         assert!(ymin <= ymax);
@@ -317,30 +424,37 @@ impl AxisAlignedBoundingBox {
         }
     }
 
+    /// Get the minimum of the x-extent.
     pub fn xmin(&self) -> f64 {
         self.x_range.start
     }
 
+    /// Get the maximum of the x-extent.
     pub fn xmax(&self) -> f64 {
         self.x_range.end
     }
 
+    /// Get the minimum of the y-extent.
     pub fn ymin(&self) -> f64 {
         self.y_range.start
     }
 
+    /// Get the maximum of the y-extent.
     pub fn ymax(&self) -> f64 {
         self.y_range.end
     }
 
+    /// Get the minimum of the z-extent.
     pub fn zmin(&self) -> f64 {
         self.z_range.start
     }
 
+    /// Get the maximum of the z-extent.
     pub fn zmax(&self) -> f64 {
         self.z_range.end
     }
 
+    /// Intersect a ray with the boudning box.
     pub fn intersect(&self, ray: Ray, tmin: f64, tmax: f64) -> bool {
         // TODO: Make this faster and take care of NaNs
 
@@ -398,6 +512,35 @@ impl AxisAlignedBoundingBox {
         true
     }
 
+    /// Create the bounding box that contains the objects in the list.
+    ///
+    /// # Panics
+    /// If the object list is empty.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::geometry::{AxisAlignedBoundingBox, Sphere};
+    /// use rayrs_lib::material::{Emission, Material};
+    /// use rayrs_lib::vecmath::Vec3;
+    /// use rayrs_lib::Object;
+    ///
+    /// let sphere1 = Object::sphere(
+    ///     1.,
+    ///     Vec3::new(-1., 0., 0.),
+    ///     Material::NoReflect,
+    ///     Emission::Dark,
+    /// );
+    /// let sphere2 = Object::sphere(
+    ///     1.,
+    ///     Vec3::new(1., 0., 0.),
+    ///     Material::NoReflect,
+    ///     Emission::Dark,
+    /// );
+    ///
+    /// let bbox = AxisAlignedBoundingBox::from_object_list(&[sphere1, sphere2]);
+    /// assert_eq!(bbox.xmin(), -2.);
+    /// assert_eq!(bbox.xmax(), 2.);
+    /// ```
     pub fn from_object_list(objects: &[Object]) -> Self {
         assert!(!objects.is_empty());
         objects
@@ -406,6 +549,31 @@ impl AxisAlignedBoundingBox {
             .fold(objects[0].bbox(), |bbox, el| bbox.expand(el.bbox()))
     }
 
+    /// Get the center of the bounding box.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::geometry::{AxisAlignedBoundingBox, Sphere};
+    /// use rayrs_lib::material::{Emission, Material};
+    /// use rayrs_lib::vecmath::Vec3;
+    /// use rayrs_lib::Object;
+    ///
+    /// let sphere1 = Object::sphere(
+    ///     1.,
+    ///     Vec3::new(-1., 0., 0.),
+    ///     Material::NoReflect,
+    ///     Emission::Dark,
+    /// );
+    /// let sphere2 = Object::sphere(
+    ///     1.,
+    ///     Vec3::new(1., 0., 0.),
+    ///     Material::NoReflect,
+    ///     Emission::Dark,
+    /// );
+    ///
+    /// let bbox = AxisAlignedBoundingBox::from_object_list(&[sphere1, sphere2]);
+    /// assert_eq!(bbox.center(), Vec3::zeros());
+    /// ```
     pub fn center(&self) -> Vec3 {
         let x = (self.x_range.end - self.x_range.start) / 2. + self.x_range.start;
         let y = (self.y_range.end - self.y_range.start) / 2. + self.y_range.start;
@@ -413,12 +581,62 @@ impl AxisAlignedBoundingBox {
         Vec3::new(x, y, z)
     }
 
+    /// Get the volume of the bounding box.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::geometry::{AxisAlignedBoundingBox, Sphere};
+    /// use rayrs_lib::material::{Emission, Material};
+    /// use rayrs_lib::vecmath::Vec3;
+    /// use rayrs_lib::Object;
+    ///
+    /// let sphere1 = Object::sphere(
+    ///     1.,
+    ///     Vec3::new(-1., 0., 0.),
+    ///     Material::NoReflect,
+    ///     Emission::Dark,
+    /// );
+    /// let sphere2 = Object::sphere(
+    ///     1.,
+    ///     Vec3::new(1., 0., 0.),
+    ///     Material::NoReflect,
+    ///     Emission::Dark,
+    /// );
+    ///
+    /// let bbox = AxisAlignedBoundingBox::from_object_list(&[sphere1, sphere2]);
+    /// assert_eq!(bbox.volume(), 16.);
+    /// ```
     pub fn volume(&self) -> f64 {
         (self.x_range.end - self.x_range.start)
             * (self.y_range.end - self.y_range.start)
             * (self.z_range.end - self.z_range.start)
     }
 
+    /// Get the total surface area of the bounding box.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::geometry::{AxisAlignedBoundingBox, Sphere};
+    /// use rayrs_lib::material::{Emission, Material};
+    /// use rayrs_lib::vecmath::Vec3;
+    /// use rayrs_lib::Object;
+    ///
+    /// let sphere1 = Object::sphere(
+    ///     1.,
+    ///     Vec3::new(-1., 0., 0.),
+    ///     Material::NoReflect,
+    ///     Emission::Dark,
+    /// );
+    /// let sphere2 = Object::sphere(
+    ///     1.,
+    ///     Vec3::new(1., 0., 0.),
+    ///     Material::NoReflect,
+    ///     Emission::Dark,
+    /// );
+    ///
+    /// let bbox = AxisAlignedBoundingBox::from_object_list(&[sphere1, sphere2]);
+    /// assert_eq!(bbox.surface_area(), 40.);
+    /// ```
     pub fn surface_area(&self) -> f64 {
         let x = self.x_range.end - self.x_range.start;
         let y = self.y_range.end - self.y_range.start;
@@ -426,6 +644,33 @@ impl AxisAlignedBoundingBox {
         2. * x * y + 2. * y * z + 2. * x * z
     }
 
+    /// Expand the bounding box to include the other bounding box.
+    ///
+    /// This consumes the bounding boxes and produces a new bounding box.
+    ///
+    /// # Examples
+    /// ```
+    /// use rayrs_lib::geometry::{AxisAlignedBoundingBox, Sphere};
+    /// use rayrs_lib::material::{Emission, Material};
+    /// use rayrs_lib::vecmath::Vec3;
+    /// use rayrs_lib::Object;
+    ///
+    /// let sphere1 = Object::sphere(
+    ///     1.,
+    ///     Vec3::new(-1., 0., 0.),
+    ///     Material::NoReflect,
+    ///     Emission::Dark,
+    /// );
+    /// let sphere2 = Object::sphere(
+    ///     1.,
+    ///     Vec3::new(1., 0., 0.),
+    ///     Material::NoReflect,
+    ///     Emission::Dark,
+    /// );
+    /// let bbox1 = sphere1.bbox().expand(sphere2.bbox());
+    /// let bbox2 = AxisAlignedBoundingBox::from_object_list(&[sphere1, sphere2]);
+    /// assert_eq!(bbox1, bbox2);
+    /// ```
     pub fn expand(self, other: Self) -> Self {
         let xmin = self.x_range.start.min(other.x_range.start);
         let xmax = self.x_range.end.max(other.x_range.end);
