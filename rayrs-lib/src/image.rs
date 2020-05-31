@@ -1,3 +1,5 @@
+//! Image utilties
+
 use super::vecmath::{Vec3, VecElements};
 
 use std::fs::File;
@@ -64,6 +66,10 @@ impl Image {
         }
     }
 
+    /// Generate image blocks that can be processed in parallel.
+    ///
+    /// If the height and width are not evenly divisible with the block size the
+    /// blocks in the rightmost column and bottom row will have less pixels.
     pub fn blocks(
         width: usize,
         height: usize,
@@ -75,6 +81,7 @@ impl Image {
         let mut height_left = height as i32;
         let mut width_left = width as i32;
 
+        // Loop through the height and width and add blocks.
         while height_left > 0 {
             while width_left > 0 {
                 let offset_x = width - width_left as usize;
@@ -129,6 +136,7 @@ impl Image {
         (x_size, y_size, images)
     }
 
+    /// Merge a list of blocks back into the full image.
     pub fn from_blocks(
         blocks: &[ImageBlock],
         width: usize,
