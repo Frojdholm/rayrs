@@ -766,6 +766,14 @@ mod tests {
     }
 
     #[test]
+    fn test_intersect_sphere_glancing() {
+        let sphere = Sphere::new(1., Vec3::new(0., 0., 0.));
+        let ray = Ray::new(Vec3::new(0.99999, -5., 0.), Vec3::new(0., 1., 0.));
+        let t = sphere.intersect(ray).unwrap();
+        assert!(t > 0.);
+    }
+
+    #[test]
     #[should_panic]
     fn test_plane_new_min_max_order() {
         let _plane = Plane::new(Axis::Z, 1., -1., 1., -1., 0.);
