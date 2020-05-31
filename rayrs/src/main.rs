@@ -1,7 +1,7 @@
 //! A path tracer that generates images based on simulating light as paths.
 use rayrs_lib::image::{Image, ImageBlock};
 use rayrs_lib::test_scenes;
-use rayrs_lib::vecmath::Vec3;
+use rayrs_lib::vecmath::{Vec3, VecElements};
 use rayrs_lib::{self, Camera, Scene};
 
 use std::env;
@@ -54,7 +54,7 @@ where
     let width = c.x_pixels();
     let height = c.y_pixels();
     // Use 16x16 blocks.
-    let (x_size, y_size, blocks) = Image::blocks(width, height, 64);
+    let (x_size, y_size, blocks) = Image::blocks(width, height, 16);
 
     let now = Instant::now();
     // Parallelized using rayon parallel iterators.
