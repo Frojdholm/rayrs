@@ -1,3 +1,11 @@
+//! Very basic loading of .obj files.
+//!
+//! The file be loaded into a vector of basic shapes defined in [`geometry`].
+//! These can the be made into [`Object`]s and added to a scene.
+//!
+//! [`geometry`]: ../geometry/index.html
+//! [`Object`]: ../struct.Object.html
+
 use super::geometry::{Sphere, Triangle};
 use super::vecmath::Vec3;
 
