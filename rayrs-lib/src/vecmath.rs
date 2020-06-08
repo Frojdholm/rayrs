@@ -339,15 +339,14 @@ impl Vector<f64> {
     /// assert_eq!(x.cross(y), z);
     /// ```
     pub fn orthonormal_basis(normal: Unit<Vector<f64>>) -> (Unit<Vector<f64>>, Unit<Vector<f64>>) {
-        // Try to choose a vector that is not close to the normal.
-        let temp = if normal.x().abs() > 0.9 {
-            Vector::unit_y()
+        // Choose the first orthonormal vector.
+        let e1 = if normal.x().abs() > normal.y().abs() {
+            Vec3::new(normal.z(), 0., -normal.x()).unit()
         } else {
-            Vector::unit_x()
+            Vec3::new(0., normal.z(), -normal.y()).unit()
         };
 
-        // Construct the basis to be right-handed.
-        let e1 = temp.cross(normal).unit();
+        // Construct the second orthonormal vector for the right-handed system.
         let e2 = normal.cross(e1).unit();
         (e1, e2)
     }
@@ -493,20 +492,21 @@ impl<T: Copy> VecElements<T> for Vector<T> {
 }
 
 impl VecUnit for Unit<Vector<f64>> {
-    // TODO: Fix floating point so that this can use shortcuts such as mag == 1
+    // TODO: Verify that using the shortcuts produces the correct result.
+    // There are possible mistakes when using new_unchecked.
     type Output = f64;
     type VecOutput = Vector<f64>;
 
     fn mag(self) -> Self::Output {
-        self.0.mag()
+        1.
     }
 
     fn mag2(self) -> Self::Output {
-        self.0.mag2()
+        1.
     }
 
     fn unit(self) -> Unit<Self::VecOutput> {
-        self.0.unit()
+        self
     }
 }
 
@@ -691,9 +691,9 @@ impl Div<f64> for Vector<f64> {
     type Output = Self;
 
     fn div(self, rhs: f64) -> Self::Output {
-        Vector {
-            data: [self.data[0] / rhs, self.data[1] / rhs, self.data[2] / rhs],
-        }
+        debug_assert!(rhs != 0.);
+        let inv_rhs = 1. / rhs;
+        self * inv_rhs
     }
 }
 
